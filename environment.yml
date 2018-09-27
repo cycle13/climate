@@ -1,0 +1,9 @@
+# conda env create -f environment.yml python=3.6
+
+name: tg_climate
+dependencies:
+  - numpy
+  - pandas
+  - matplotlib
+  - pymongo
+  - jupyter
