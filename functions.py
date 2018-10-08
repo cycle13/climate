@@ -112,14 +112,12 @@ class Human:
             1.4: "Car driving",
             1.5: "Graphic profession - Book Binder",
             1.6: "Standing, light activity (shopping, laboratory, light industry)",
-            1.6: "Teacher",
             1.7: "Domestic work -shaving, washing and dressing",
             1.9: "Walking on the level, 2 km/h",
             2: "Standing, medium activity (shop assistant, domestic work)",
             2.2: "Building industry - Brick laying (Block of 15.3 kg)",
             2.5: "Washing dishes standing",
-            2.9: "Domestic work - raking leaves on the lawn",
-            2.9: "Domestic work - washing by hand and ironing (120-220 W)",
+            2.9: "Domestic work - washing by hand, ironing, raking leaves",
             3: "Iron and steel - ramming the mold with a pneumatic hammer",
             3.1: "Building industry - forming the mold",
             3.4: "Walking on the level, 5 km/h",
@@ -138,6 +136,26 @@ class Human:
             9.5: "Sports - Running in 15 km/h",
         }
         return info
+
+# Method of loading weather from database
+def load_weather(host, port):
+    """
+    Load weather from MongoDB
+    :param host: Host IP address
+    :type host: str
+    :param port: Port number
+    :type port: int
+    :rtype: dict
+    """
+    from pymongo import MongoClient
+    # TODO: Hard-code the following variables
+    database = "sandp"  # Name of database
+    collection = "weather"  # Name of collection
+    client = MongoClient(host, port)
+    db = client[database]
+    col = db[collection]
+
+    return col.find_one()
 
 # Methods of processing climatic variables
 
@@ -255,6 +273,8 @@ def dewpoint_temperature(Ta, rh):
     for Tc in range:  0C < Tc < 60C and Tdp in range:  0C < Tdp < 50C, uncertainty is +/- 0.4C
     :param Ta: temperature (Celsius)
     :type Ta: float
+    :param rh: relative humidity (%)
+    :type rh: float
     :return: dew-point temperature (Celsius)
     :rtype: float
     """
@@ -279,7 +299,7 @@ def humidity_index(Ta, Tdp):
     :param Ta: temperature (Celcius)
     :type Ta: float
     :param Tdp: dew-point temperature (Celsius)
-    :type rh: float
+    :type Tdp: float
     :return: humidity index (%), humidity index category (0-4), comfortable
     :rtype: Tuple[float, int, bool]
     """
@@ -310,7 +330,7 @@ def humidity_index(Ta, Tdp):
         # Some discomfort
         humidity_index_category = 1
         comfortable = False
-    elif humidity_index >= 40 and humidity_index < 45:
+    elif 40 <= humidity_index < 45:
         # Great discomfort; avoid exertion
         humidity_index_category = 2
         comfortable = False
