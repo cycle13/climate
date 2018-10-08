@@ -28,14 +28,19 @@ class Human:
         self.metabolicRate = metabolicRate
 
     def body_mass_index(self):
+        """
+        Return the Body Mass Index of the Human instance
+        :return: Body Mass Index
+        :rtype: float
+        """
         return self.weight / ((self.height) ** 2)
 
 
     def body_mass_index_category(self):
         bmi = self.bodyMassIndex()
-        bmi_category= None
+        bmi_category = None
 
-        if (self.gender == "male"):
+        if self.gender == "male":
             if bmi < 17.5:
                 bmi_category = "Anorexia"
             elif 17.5 <= bmi < 20.7:
@@ -50,7 +55,7 @@ class Human:
                 bmi_category = "Obese"
             elif bmi >= 40:
                 bmi_category = "Extreme obesity"
-        elif (self.gender == "female"):
+        elif self.gender == "female":
             if bmi < 17.5:
                 bmi_category = "Anorexia"
             elif 17.5 <= bmi < 19.1:
@@ -71,13 +76,13 @@ class Human:
 
     def basal_metabolic_rate(self):
         if self.gender == "male":
-            bmr =  9.99 * self.weight + 6.25 * (self.height * 100) - 4.92 * self.age + 5
+            bmr = 9.99 * self.weight + 6.25 * (self.height * 100) - 4.92 * self.age + 5
         elif self.gender == "female":
-            bmr =  9.99 * self.weight + 6.25 * (self.height * 100) - 5 * self.age - 161
+            bmr = 9.99 * self.weight + 6.25 * (self.height * 100) - 5 * self.age - 161
         return bmr
 
     # Helper functions - might be temporary - who knows
-    def clothing_insulation_dict():
+    def clothing_insulation_dict(self):
         info = {
             0: "Naked!",
             0.20: "Very light summer clothes (shorts/skirt, t-shirt, slippers, no socks)",
@@ -85,12 +90,12 @@ class Human:
             1: "Street-business suit or Typical indoor winter clothing",
             1.5: "Suit and cotton coat",
             2: "Winter suit and coat",
-            2.58: "Firefighting clothes",
+            2.58: "Fire-fighting clothes",
             4: "Heavy polar outfit (fur pants, coat, hood, gloves...)"
         }
         return info
 
-    def clothing_albedo_dict():
+    def clothing_albedo_dict(self):
         info = {
             0.21: "Dark colored (black and gray clothes)",
             0.37: "Medium colored (any clothes colors between upper two)",
@@ -99,12 +104,11 @@ class Human:
         }
         return info
 
-    def metabolic_rate_dict():
+    def metabolic_rate_dict(self):
         info = {
             0.8: "Reclining, Sleeping",
             1: "Seated relaxed",
             1.2: "Standing at rest",
-            1.2: "Sedentary activity (office, dwelling, school, laboratory)",
             1.4: "Car driving",
             1.5: "Graphic profession - Book Binder",
             1.6: "Standing, light activity (shopping, laboratory, light industry)",
@@ -121,7 +125,7 @@ class Human:
             3.4: "Walking on the level, 5 km/h",
             3.5: "Forestry - cutting across the grain with a one-man power saw",
             4: "Volleyball, Bicycling (15 km/h)",
-            4.5: "Calisthenics",
+            4.5: "Callisthenics",
             4.7: "Building industry - loading a wheelbarrow with stones and mortar",
             5: "Golf, Softball",
             5.5: "Gymnastics",
@@ -171,13 +175,12 @@ def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
 
     if log:
         return ws * (math.log(h2 / roughness[rc]) / math.log(h1 / roughness[rc]))
-    else:
-        wind_shear_exponent = 1 / 7
-        return ws * ((h2 / h1) ** wind_shear_exponent)
+    wind_shear_exponent = 1 / 7
+    return ws * ((h2 / h1) ** wind_shear_exponent)
 
 
-def estimate_ground_temperature_at_depth(depth, annual_average_temperature, annual_temperature_range,
-                                         days_since_coldest_day, soil_diffusivity):
+def ground_temperature(depth, annual_average_temperature, annual_temperature_range,
+                                         days_since_coldest_day, soil_diffusivity=0.01):
     """
     Estimate ground temperature at a depth from surfaces based on air temperature
     :param depth: depth (m)
@@ -190,8 +193,6 @@ def estimate_ground_temperature_at_depth(depth, annual_average_temperature, annu
     :type days_since_coldest_day: int
     :param soil_diffusivity: soil diffusivity (cm2/s)
     :type soil_diffusivity: float
-    """
-    import math
 
     soil_diffusivities = {
         "Rock": 0.02,
@@ -200,6 +201,8 @@ def estimate_ground_temperature_at_depth(depth, annual_average_temperature, annu
         "Dry clay": 0.002,
         "Dry sand": 0.001
     }
+    """
+    import math
 
     w = 2 * math.pi / 365
     dd = math.sqrt(2 * soil_diffusivity / w)
@@ -257,6 +260,10 @@ def dewpoint_temperature(Ta, rh):
     """
 
     import math
+    import warnings
+
+    if not 0 <= rh <= 100:
+        warnings.warn("The value input for Relative Humidity is outside the range suitable for accurate Dewpoint estimation")
 
     a = 17.27
     b = 237.7
@@ -326,6 +333,8 @@ def heat_index(Ta, rh):
     :return: heat index in Celcius, heat index category (0-4), comfortable
     :rtype: Tuple[float, int, bool]
     """
+
+    import math
 
     Tf = celsius_to_fahrenheit(Ta)
 
