@@ -33,7 +33,7 @@ class Human:
         :return: Body Mass Index
         :rtype: float
         """
-        return self.weight / ((self.height) ** 2)
+        return self.weight / (self.height ** 2)
 
     def body_mass_index_category(self):
         bmi = self.bodyMassIndex()
@@ -121,7 +121,7 @@ class Human:
             3.4: "Walking on the level, 5 km/h",
             3.5: "Forestry - cutting across the grain with a one-man power saw",
             4: "Volleyball, Bicycling (15 km/h)",
-            4.5: "Callisthenics",
+            4.5: "Calisthenics",
             4.7: "Building industry - loading a wheelbarrow with stones and mortar",
             5: "Golf, Softball",
             5.5: "Gymnastics",
@@ -137,7 +137,7 @@ class Human:
 
 
 # Method of loading weather from database
-def load_weather(host, port):
+def load_mongo_weather(host, port):
     """
     Load weather from MongoDB
     :param host: Host IP address
@@ -148,6 +148,7 @@ def load_weather(host, port):
     """
     from pymongo import MongoClient
     # TODO: Hard-code the following variables
+    # TODO: Add weather file search query functionality
     database = "sandp"  # Name of database
     collection = "weather"  # Name of collection
     client = MongoClient(host, port)
@@ -155,6 +156,79 @@ def load_weather(host, port):
     col = db[collection]
 
     return col.find_one()
+
+
+def load_epw_weather(epw_file):
+    """
+    Load weather from an EPW file
+    :param epw_file: Path to EPW file
+    :type epw_file: str
+    :return: dict
+    """
+
+    loc_dict = {
+        0: ['year', int],
+        1: ['month', int],
+        2: ['day', int],
+        3: ['hour', int],
+        4: ['minute', int],
+        5: ['presentWeatherCodes', str],
+        6: ['dryBulbTemperature', float],
+        7: ['dewPointTemperature', float],
+        8: ['relativeHumidity', float],
+        9: ['atmosphericStationPressure', float],
+        10: ['extraterrestrialHorizontalRadiation', float],
+        11: ['extraterrestrialDirectNormalRadiation', float],
+        12: ['horizontalInfraredRadiationIntensity', float],
+        13: ['globalHorizontalRadiation', float],
+        14: ['directNormalRadiation', float],
+        15: ['diffuseHorizontalRadiation', float],
+        16: ['globalHorizontalIlluminance', int],
+        17: ['directNormalIlluminance', float],
+        18: ['diffuseHorizontalIlluminance', float],
+        19: ['zenithLuminance', float],
+        20: ['windDirection', float],
+        21: ['windSpeed', float],
+        22: ['totalSkyCover', float],
+        23: ['opaqueSkyCover', float],
+        24: ['visibility', float],
+        25: ['ceilingHeight', float],
+        26: ['presentWeatherObservation', float],
+        27: ['presentWeatherCodes', float],
+        28: ['precipitableWater', float],
+        29: ['aerosolOpticalDepth', float],
+        30: ['snowDepth', float],
+        31: ['daysSinceLastSnowfall', float],
+        32: ['albedo', float],
+        33: ['liquidPrecipitationDepth', float],
+        34: ['liquidPrecipitationQuantity', float]
+    }
+
+    # Load weatherfile
+    with open(epw_file) as f:
+        content = f.readlines()
+        content = [i.split(",") for i in [x.strip() for x in content]]
+
+    # Convert data to correct datatype
+    ll = list(map(list, zip(*[[loc_dict[n][1](j) for n, j in enumerate(i)] for i in content[-8760:]])))
+
+    # Create dictionary
+    dd = {
+        "elevation": float(content[0][-1].strip()),
+        "timeZone": float(content[0][-2].strip()),
+        "longitude": float(content[0][-3].strip()),
+        "latitude": float(content[0][-4].strip()),
+        "wmoStation": int(content[0][-5].strip()),
+        "dataSource": content[0][-6].strip(),
+        "country": content[0][-7].strip(),
+        "region": content[0][-8].strip(),
+        "city": content[0][-9].strip(),
+    }
+
+    for n, i in enumerate(loc_dict):
+        dd[loc_dict[i][0]] = {"values": ll[n]}
+
+    return dd
 
 
 def sun_position(latitude, longitude, year, month, day, hour, minute, second, time_zone):
@@ -241,7 +315,45 @@ def fanger_solar_exposure(azimuth, altitude, posture=1):
         return bisplev(azimuth, altitude, standing_bisplrep)
 
 
-# Methods of processing climatic variables
+def solar_adjusted_mean_radiant_temperature(dry_bulb_temperature: float,
+                                            diffuse_horizontal_radiation: float,
+                                            global_horizontal_radiation: float,
+                                            direct_normal_radiation: object,
+                                            solar_azimuth: float,
+                                            solar_altitude: float,
+                                            clothing_absorbtivity: float = 0.7,
+                                            ground_reflectivity: float = 0.4,
+                                            shading_transmissivity: float = 1.0) -> float:
+    """
+    This function is based on the ladybug method by Mostapha Roudsari, building on formulas translating solar radiation
+    into an effective radiant field and solar-adjusted mean radiant temperature. For further details on this
+    approximation, see Arens, Edward; Huang, Li; Hoyt, Tyler; Zhou, Xin; Shiavon, Stefano. (2014). Modeling the comfort
+    effects of short-wave solar radiation indoors.  Indoor Environmental Quality (IEQ). http://escholarship.org/uc/item/89m1h2dg#page-4
+    :param dry_bulb_temperature: Dry-bulb temperature
+    :param diffuse_horizontal_radiation: Diffuse solar horizontal radiation
+    :param global_horizontal_radiation: Global solar horizontal radiation
+    :param direct_normal_radiation: Direct solar normal radiation
+    :param solar_azimuth: Solar azimuth
+    :param solar_altitude: Solar altitude
+    :param clothing_absorbtivity: The fraction of solar radiation absorbed by the human body. The default is set to 0.7 for (average/brown) skin and average clothing. Increase this value for darker skin or darker clothing.
+    :param ground_reflectivity:  The fraction of solar radiation reflected off of the ground. By default, this is set to 0.4, characteristic of concrete paving. 0.25 would correspond to outdoor grass or dry bare soil.
+    :param shading_transmissivity: The fraction of shading transmissivity. exposed=1, shaded=0.
+    :return:
+    """
+    # TODO: Add error handling, range and type checking
+    fraction_body_exposed_radiation = 0.71  # Fraction of the body visible to radiation. 0.725 is for standing, 0.696 for sitting, 0.68 for lying down. A nominal value of 0.71 is used.
+    radiative_heat_transfer_coefficient = 6.012  # A good guess at the radiative heat transfer coefficient
+    projected_area_fraction = fanger_solar_exposure(solar_azimuth, solar_altitude, posture=1)
+    effective_radiant_flux = ((0.5 * fraction_body_exposed_radiation * (
+                diffuse_horizontal_radiation + (global_horizontal_radiation * ground_reflectivity)) + (
+                                           fraction_body_exposed_radiation * projected_area_fraction * direct_normal_radiation)) * shading_transmissivity) * (
+                                         clothing_absorbtivity / 0.95)
+    mean_radiant_temperature_delta = (
+                effective_radiant_flux / (fraction_body_exposed_radiation * radiative_heat_transfer_coefficient))
+
+    return dry_bulb_temperature + mean_radiant_temperature_delta
+
+
 def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
     """
     Convert wind speed from one height to another using the specific method
@@ -362,10 +474,10 @@ def dewpoint_temperature(Ta, rh):
     """
 
     import math
-    import warnings
+    import logging
 
     if not 0 <= rh <= 100:
-        warnings.warn("Value input for RH is outside the range suitable for accurate Dewpoint estimation")
+        logging.warning(" Value input for RH is outside the range suitable for accurate Dewpoint estimation\n")
 
     a = 17.27
     b = 237.7
