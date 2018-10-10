@@ -8,4 +8,4 @@ dependencies:
   - pymongo
   - jupyter
   - nbconvert
-  - astropy
+  - pysolar

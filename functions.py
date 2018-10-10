@@ -35,7 +35,6 @@ class Human:
         """
         return self.weight / ((self.height) ** 2)
 
-
     def body_mass_index_category(self):
         bmi = self.bodyMassIndex()
         bmi_category = None
@@ -72,7 +71,6 @@ class Human:
                 bmi_category = "Extreme obesity"
 
         return bmi_category
-
 
     def basal_metabolic_rate(self):
         if self.gender == "male":
@@ -137,6 +135,7 @@ class Human:
         }
         return info
 
+
 # Method of loading weather from database
 def load_weather(host, port):
     """
@@ -157,8 +156,92 @@ def load_weather(host, port):
 
     return col.find_one()
 
-# Methods of processing climatic variables
 
+def sun_position(latitude, longitude, year, month, day, hour, minute, second, time_zone):
+    """
+    Determine sun position in sky from location on ground and timezone aware datetime
+    :param latitude: Latitude, between -90 and +90 (distance from equator, +Ve is north and -Ve is south)
+    :type latitude: float
+    :param longitude: Longitude, between -180 and +180 (distance from prime meridian, +Ve is east and -Ve is west)
+    :type longitude: float
+    :param year: Year
+    :type year: int
+    :param month: Month
+    :type month: int
+    :param day: Day
+    :type day: int
+    :param hour: Hour
+    :type hour: int
+    :param minute: Minute
+    :type minute: int
+    :param second: Second
+    :type second: int
+    :param time_zone: Number of hours offset from UTC between -12 and +12
+    :type time_zone:
+    :return: solar altitude and azimuth
+    :rtype: (float, float)
+    """
+    from pysolar.solar import get_altitude, get_azimuth
+    from datetime import datetime, timezone, timedelta
+
+    date_time = datetime(year, month, day, hour, minute, second, 0)
+    date_time = date_time.replace(tzinfo=timezone(timedelta(hours=time_zone)))
+
+    altitude = get_altitude(latitude, longitude, date_time)
+    azimuth = get_azimuth(latitude, longitude, date_time)
+
+    return altitude, azimuth
+
+def fanger_solar_exposure(azimuth, altitude, posture=1):
+    """
+    Determine the exposure factor based on human posture and sun position
+    :param azimuth: Solar azimuth, between 0 and 180 (inclusive)
+    :type azimuth: float
+    :param altitude: Solar altitude, between 0 and 90 (inclusive)
+    :type altitude: float
+    :param posture: Human posture. 0=Sitting, 1=Standing
+    :type posture: int
+    :return: solar exposure
+    :rtype: float
+    """
+    from scipy.interpolate import bisplev
+
+    if azimuth < 0:
+        raise ValueError('Azimuth is outside the expected range of 0 to 180.')
+    elif azimuth > 180:
+        raise ValueError('Azimuth is outside the expected range of 0 to 180.')
+    elif altitude < 0:
+        raise ValueError('Altitude is outside the expected range of 0 to 90.')
+    elif altitude > 90:
+        raise ValueError('Altitude is outside the expected range of 0 to 90.')
+
+    # Sitting bivariate B-spline and its derivatives
+    sitting_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
+                        [0.42999558258469306, 0.49777802226651985, 0.2858541264803382, 0.2636331839991635,
+                         0.10059901058304405, 0.5904998653021177, 0.6393605287969937, 0.41177803047742195,
+                         0.16397939147762605, 0.1145630272512949, -0.07290688451711066, -0.0877360565501316,
+                         0.03719879969518147, 0.06771059788029093, 0.09444998526069391, 0.5573351684449549,
+                         0.6212235986152396, 0.3384990152297299, 0.25505266892999545, 0.1011441730110879,
+                         0.4432956571996788, 0.49809124858382825, 0.29471168936411446, 0.19682482035937438,
+                         0.10008130856803796], 4, 4]
+
+    # Standing bivariate B-spline and its derivatives
+    standing_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
+                         [0.365433469329803, 0.41471995039390336, 0.3539202584010255, 0.35205668670475776,
+                          0.21505967838173534, 0.5304745700779437, 0.6180584137541132, 0.11434859278048302,
+                          0.4862162611010728, 0.20252438358996272, -0.015147290187610778, 0.22189948439503024,
+                          0.6990946114268216, -0.000718703369787728, 0.22472889635480628, 0.5176922764465676,
+                          0.35055123160310636, -0.0032935618498728487, 0.3404006983313149, 0.19936403473400507,
+                          0.37870178660536147, 0.24613731159172733, 0.06300314787643235, 0.23364607863218287,
+                          0.2171651821703637], 4, 4]
+
+    if posture == 0:
+        return bisplev(azimuth, altitude, sitting_bisplrep)
+    elif posture == 1:
+        return bisplev(azimuth, altitude, standing_bisplrep)
+
+
+# Methods of processing climatic variables
 def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
     """
     Convert wind speed from one height to another using the specific method
@@ -179,16 +262,16 @@ def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
     import math
 
     roughness = {
-        0: 0.0002, # Water surfaces: seas and Lakes
-        0.2: 0.0005, # Inlet water
-        0.5: 0.0024, # Open terrain with smooth surface, e.g. concrete, airport runways, mown grass etc.
-        1: 0.03, # Open agricultural land without fences and hedges; maybe some far apart buildings and very gentle hills
-        1.5: 0.055, # Agricultural land with a few buildings and 8 m high hedges separated by more than 1 km
-        2: 0.1, # Agricultural land with a few buildings and 8 m high hedges separated by approx. 500 m
-        2.5: 0.2, # Agricultural land with many trees, bushes and plants, or 8 m high hedges separated by approx. 250 m
-        3: 0.4, # Towns, villages, agricultural land with many or high hedges, forests and very rough and uneven terrain
-        3.5: 0.6, # Large towns with high buildings
-        4: 1.6 # Large cities with high buildings and skyscrapers
+        0: 0.0002,  # Water surfaces: seas and Lakes
+        0.2: 0.0005,  # Inlet water
+        0.5: 0.0024,  # Open terrain with smooth surface, e.g. concrete, airport runways, mown grass etc.
+        1: 0.03,  # Open agricultural land without fences and hedges; very gentle hills and the odd farmhouse
+        1.5: 0.055,  # Agricultural land with a few buildings and 8 m high hedges separated by more than 1 km
+        2: 0.1,  # Agricultural land with a few buildings and 8 m high hedges separated by approx. 500 m
+        2.5: 0.2,  # Agricultural land with many trees, bushes and plants, or 8 m high hedges separated by approx. 250 m
+        3: 0.4,  # Towns or villages with many or high hedges, forests and very rough and uneven terrain
+        3.5: 0.6,  # Large towns with high buildings
+        4: 1.6  # Large cities with high buildings and skyscrapers
     }
 
     if log:
@@ -197,8 +280,8 @@ def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
     return ws * ((h2 / h1) ** wind_shear_exponent)
 
 
-def ground_temperature(depth, annual_average_temperature, annual_temperature_range,
-                                         days_since_coldest_day, soil_diffusivity=0.01):
+def ground_temperature(depth, annual_average_temperature, annual_temperature_range, days_since_coldest_day,
+                       soil_diffusivity=0.01):
     """
     Estimate ground temperature at a depth from surfaces based on air temperature
     :param depth: depth (m)
@@ -227,7 +310,6 @@ def ground_temperature(depth, annual_average_temperature, annual_temperature_ran
 
     return annual_average_temperature - (annual_temperature_range / 2) * math.exp(-depth / dd) * math.cos(
         (w * days_since_coldest_day) - (depth / dd))
-
 
 
 def celsius_to_fahrenheit(Tc):
@@ -283,19 +365,20 @@ def dewpoint_temperature(Ta, rh):
     import warnings
 
     if not 0 <= rh <= 100:
-        warnings.warn("The value input for Relative Humidity is outside the range suitable for accurate Dewpoint estimation")
+        warnings.warn("Value input for RH is outside the range suitable for accurate Dewpoint estimation")
 
     a = 17.27
     b = 237.7
     rh = rh / 100
-    Tdp = (b * (((a * Ta) / (b + Ta)) + math.log(rh))) / (a - ((( a * Ta) / (b + Ta)) + math.log(rh)))
+    Tdp = (b * (((a * Ta) / (b + Ta)) + math.log(rh))) / (a - (((a * Ta) / (b + Ta)) + math.log(rh)))
 
     return Tdp
 
 
 def humidity_index(Ta, Tdp):
     """
-    Calulate the humidity index (humidex) from air temperature and relative humidity -  see https://web.archive.org/web/20130627223738/http://climate.weatheroffice.gc.ca/prods_servs/normals_documentation_e.html
+    Calulate the humidity index (humidex) from air temperature and relative humidity -
+    https://web.archive.org/web/20130627223738/http://climate.weatheroffice.gc.ca/prods_servs/normals_documentation_e.html
     :param Ta: temperature (Celcius)
     :type Ta: float
     :param Tdp: dew-point temperature (Celsius)
@@ -362,9 +445,9 @@ def heat_index(Ta, rh):
         heat_index_fahrenheit = 0.5 * (Tf + 61.0 + ((Tf - 68.0) * 1.2) + (rh * 0.094))
     else:
         heat_index_fahrenheit = -42.379 + 2.04901523 * Tf + 10.14333127 * rh - 0.22475541 * Tf * rh - 6.83783 * (
-                    10 ** (-3)) * (Tf ** (2)) - 5.481717 * (10 ** (-2)) * (rh ** (2)) + 1.22874 * (10 ** (-3)) * (
-                                            Tf ** (2)) * (rh) + 8.5282 * (10 ** (-4)) * (Tf) * (rh ** (2)) - 1.99 * (
-                                            10 ** (-6)) * (Tf ** (2)) * (rh ** (2))
+                10 ** (-3)) * (Tf ** (2)) - 5.481717 * (10 ** (-2)) * (rh ** (2)) + 1.22874 * (10 ** (-3)) * (
+                                        Tf ** (2)) * (rh) + 8.5282 * (10 ** (-4)) * (Tf) * (rh ** (2)) - 1.99 * (
+                                        10 ** (-6)) * (Tf ** (2)) * (rh ** (2))
         if (Tf >= 80) and (Tf <= 112) and (rh < 13):
             adjust = ((13 - rh) / 4) * math.sqrt((17 - abs(Tf - 95)) / 17)
             heat_index_fahrenheit = heat_index_fahrenheit - adjust
@@ -405,7 +488,8 @@ def heat_index(Ta, rh):
 
 def discomfort_index(Ta, rh):
     """
-    Compute the Heat Index (Thom's Index) in accordance with the regression defined in Thom, E.C. (1959): The discomfort index. Weather wise, 12: 5760
+    Compute the Heat Index (Thom's Index) in accordance with the regression defined in Thom, E.C. (1959):
+    The discomfort index. Weather wise, 12: 5760
     :param Ta: temperature in Celcius
     :type Ta: float
     :param rh: relative humidity
@@ -477,7 +561,7 @@ def wind_chill_temperature(Ta, ws):
     :rtype: Tuple[float, int, bool]
     """
 
-    ws_km_h = ws * 3.6   # convert m/s to km/h wind speed
+    ws_km_h = ws * 3.6  # convert m/s to km/h wind speed
 
     wind_chill_temperature = 13.12 + 0.6215 * Ta - 11.37 * (ws_km_h ** 0.16) + 0.3965 * Ta * (ws_km_h ** 0.16)
 
@@ -592,11 +676,11 @@ def effective_temperature(Ta, rh, ws, SR, ac):
         effective_temperature = Ta - 0.4 * (Ta - 10) * (1 - rh / 100)  # formula by Missenard
     elif ws > 0.2:
         effective_temperature = 37 - ((37 - Ta) / (0.68 - (0.0014 * rh) + (1 / (1.76 + 1.4 * (ws ** 0.75))))) - (
-                    0.29 * Ta * (1 - 0.01 * rh))  # modified formula by Gregorczuk (WMO, 1972; Hentschel, 1987)
+                0.29 * Ta * (1 - 0.01 * rh))  # modified formula by Gregorczuk (WMO, 1972; Hentschel, 1987)
 
     # Radiative-effective temperature
     radiative_effective_temperature = effective_temperature + ((1 - 0.01 * ac) * SR) * (
-                (0.0155 - 0.00025 * effective_temperature) - (0.0043 - 0.00011 * effective_temperature))
+            (0.0155 - 0.00025 * effective_temperature) - (0.0043 - 0.00011 * effective_temperature))
 
     effective_temperature_category = None
     comfortable = None
@@ -624,7 +708,6 @@ def effective_temperature(Ta, rh, ws, SR, ac):
         comfortable = False
 
     return radiative_effective_temperature, effective_temperature_category, comfortable
-
 
 # def comfPierceSET(Ta, Tr, ws, rh, met, clo, wme):
 #     """
@@ -701,7 +784,8 @@ def effective_temperature(Ta, rh, ws, SR, ac):
 #     #Start new experiment here (for graded experiments)
 #     #UNIT CONVERSIONS (from input variables)
 #
-#     p = 101325.0 / 1000 # This variable is the pressure of the atmosphere in kPa and was taken from the psychrometrics.js file of the CBE comfort tool.
+#     p = 101325.0 / 1000 # This variable is the pressure of the atmosphere in kPa and was taken from the
+#     psychrometrics.js file of the CBE comfort tool.
 #
 #     PressureInAtmospheres = p * 0.009869
 #     LTIME = 60
