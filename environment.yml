@@ -1,4 +1,4 @@
-# conda env create -f environment.yml python=3.6
+# conda env create -f C:\Users\tgerrish\Documents\GitHub\climate\environment.yml python=3.5
 
 name: tg_climate
 dependencies:
@@ -7,3 +7,5 @@ dependencies:
   - matplotlib
   - pymongo
   - jupyter
+  - nbconvert
+  - pysolar
