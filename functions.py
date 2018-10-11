@@ -135,6 +135,11 @@ class Human:
         }
         return info
 
+# TODO: Check python psychromteirc chart genertor for psychrometrics methdos
+# TODO: windroses
+# TODO: charts!
+# TODO: psychrometric chart
+# TODO: Dan Knotts stuff
 
 def interpret(val):
     """Attempt to interpret the dtype for a single object
