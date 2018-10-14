@@ -16,6 +16,7 @@ class Human:
         :param acclimation: Whether the human is acclimated to evaluated conditions
         :param metabolicRate: met value - see metabolicRateDict()
         """
+
         self.age = age
         self.gender = gender
         self.height = height
@@ -534,6 +535,7 @@ def solar_altitude(latitude, longitude, year, month, day, hour, time_zone, minut
     :type time_zone:
     :return: solar altitude
     :rtype: (float)
+    # TODO: Replace with standard python method
     """
     from pysolar.solar import get_altitude
     from datetime import datetime, timezone, timedelta
@@ -569,6 +571,7 @@ def solar_azimuth(latitude, longitude, year, month, day, hour, time_zone, minute
     :type time_zone:
     :return: solar altitude
     :rtype: (float)
+    # TODO: Replace with standard python method
     """
     from pysolar.solar import get_azimuth
     from datetime import datetime, timezone, timedelta
