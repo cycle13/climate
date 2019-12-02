@@ -44,12 +44,13 @@ class BuroHappold(object):
             },
         }
 
+
 class EPW(object):
 
-    def __init__(self, filepath):
+    def __init__(self, file_path):
 
         # Metadata
-        self.filepath = os.path.abspath(filepath) if filepath is not None else None
+        self.filepath = os.path.abspath(file_path) if file_path is not None else None
 
         # Location variables
         self.city = None
@@ -104,14 +105,14 @@ class EPW(object):
         # Derived variables
         self.solar_altitude = None
         self.solar_azimuth = None
-        self.solar_wet_bulb_temperature = None
-        self.solar_enthalpy = None
-        self.solar_humidity_ratio = None
+        self.wet_bulb_temperature = None
+        self.enthalpy = None
+        self.humidity_ratio = None
         self.universal_thermal_climate_index = None
         self.standard_effective_temperature = None
         self.solar_adjusted_mean_radiant_temperature = None
         self.mean_radiant_temperature = None
-
+        self.ground_temperature_at_depth=  None
 
     def read(self):
         with open(self.filepath, "r") as f:
@@ -130,7 +131,7 @@ class EPW(object):
             # Read typical extreme periods data
             self.typical_extreme_periods = ",".join(dat[2].strip().split(",")[1:])
 
-            # Read ground temperatures data
+            # Read ground temperatures data from weatherfile
             self.ground_temperatures = ",".join(dat[3].strip().split(",")[1:])
 
             # Read holidays/daylight savings data
@@ -227,7 +228,43 @@ class EPW(object):
             self.liquid_precipitation_depth = df.liquid_precipitation_depth
             self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
 
+    def to_csv(self, file_path):
+        self.df.to_csv(file_path)
+        return file_path
 
-    def to_csv(self, filepath):
-        self.df.to_csv(filepath)
-        return filepath
+    def run_psychrometrics(self):
+        self.wet_bulb_temperature = self.df.apply(lambda x: humidity_ratio_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
+        print("Wet-bulb temperature calculated")
+        self.enthalpy = self.df.apply(lambda x: enthalpy_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
+        print("Enthalpy calculated")
+        self.humidity_ratio = self.df.apply(lambda x: wet_bulb_temperature_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
+        print("Humidity ratio calculated")
+        self.wet_bulb_temperature.name = "wet_bulb_temperature"
+        self.enthalpy.name = "enthalpy"
+        self.humidity_ratio.name = "humidity_ratio"
+        self.df = pd.concat([self.df, self.wet_bulb_temperature, self.enthalpy, self.humidity_ratio], axis=1)
+
+    def run_sunposition(self):
+        from pysolar.solar import get_altitude_fast, get_azimuth_fast
+        self.solar_altitude = pd.Series(index=self.df.index, data=[float(get_altitude_fast(self.latitude, self.longitude, i)) for i in self.df.index], name="solar_altitude")
+        print("Solar altitude calculated")
+        self.solar_azimuth = pd.Series(index=self.df.index, data=[float(get_azimuth_fast(self.latitude, self.longitude, i)) for i in self.df.index], name="solar_azimuth")
+        print("Solar azimuth calculated")
+        self.df = pd.concat([self.df, self.solar_altitude, self.solar_azimuth], axis=1)
+
+    def run_ground_temperatures(self, depth=0.1):
+        mn = self.dry_bulb_temperature.mean()
+        rng = self.dry_bulb_temperature.max() - self.dry_bulb_temperature.min()
+        coldest_day = self.dry_bulb_temperature.resample("1D").mean().idxmin()
+
+        gndts = []
+        for j in [i if i > 0 else i + 365 for i in (self.df.index - coldest_day).total_seconds() / 86400]:
+            gndts.append(ground_temperature_at_depth(depth, mn, rng, j, soil_diffusivity=0.01))
+        self.ground_temperature_at_depth = pd.Series(name="ground_temperature_at_depth", index=self.df.index, data=gndts)
+        print("Ground temperature calculated")
+        self.df = pd.concat([self.df, self.ground_temperature_at_depth], axis=1)
+
+    def run_pedestrian_wind_speed(self):
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.df.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+        print("Pedestrian wind-speed calculated")
+        self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
