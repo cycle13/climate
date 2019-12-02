@@ -13,7 +13,7 @@ class EPW(object):
     def __init__(self, filepath):
 
         # Metadata
-        self.filepath = os.path.normpath(filepath) if filepath is not None else None
+        self.filepath = os.path.abspath(filepath) if filepath is not None else None
 
         # Header information
         self.city = ''
@@ -76,6 +76,10 @@ class EPW(object):
 
             # Read location data
             self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = dat[0].strip().split(",")[1:]
+            self.latitude = float(self.latitude)
+            self.longitude = float(self.longitude)
+            self.time_zone = float(self.time_zone)
+            self.elevation = float(self.elevation)
             # Read design conditions data
             self.design_conditions = ",".join(dat[1].strip().split(",")[1:])
             # Read typical extreme periods data
@@ -92,20 +96,44 @@ class EPW(object):
             # Read the data table
             df = pd.read_csv(StringIO("\n".join(dat[8:])), header=None)
             # Rename columns
-            df.columns = ['year', 'month', 'day', 'hour', 'minute', 'data_source_and_uncertainty_flags',
-                          'dry_bulb_temperature', 'dew_point_temperature', 'relative_humidity',
-                          'atmospheric_station_pressure', 'extraterrestrial_horizontal_radiation',
-                          'extraterrestrial_direct_normal_radiation', 'horizontal_infrared_radiation_intensity',
-                          'global_horizontal_radiation', 'direct_normal_radiation', 'diffuse_horizontal_radiation',
-                          'global_horizontal_illuminance', 'direct_normal_illuminance',
-                          'diffuse_horizontal_illuminance', 'zenith_luminance', 'wind_direction', 'wind_speed',
-                          'total_sky_cover', 'opaque_sky_cover', 'visibility', 'ceiling_height',
-                          'present_weather_observation', 'present_weather_codes', 'precipitable_water',
-                          'aerosol_optical_depth', 'snow_depth', 'days_since_last_snowfall', 'albedo',
-                          'liquid_precipitation_depth', 'liquid_precipitation_quantity', ]
+            df.columns = [
+                'year',
+                'month',
+                'day',
+                'hour',
+                'minute',
+                'data_source_and_uncertainty_flags',
+                'dry_bulb_temperature',
+                'dew_point_temperature',
+                'relative_humidity',
+                'atmospheric_station_pressure',
+                'extraterrestrial_horizontal_radiation',
+                'extraterrestrial_direct_normal_radiation',
+                'horizontal_infrared_radiation_intensity',
+                'global_horizontal_radiation',
+                'direct_normal_radiation',
+                'diffuse_horizontal_radiation',
+                'global_horizontal_illuminance',
+                'direct_normal_illuminance',
+                'diffuse_horizontal_illuminance',
+                'zenith_luminance', 'wind_direction',
+                'wind_speed',
+                'total_sky_cover',
+                'opaque_sky_cover',
+                'visibility',
+                'ceiling_height',
+                'present_weather_observation',
+                'present_weather_codes',
+                'precipitable_water',
+                'aerosol_optical_depth',
+                'snow_depth',
+                'days_since_last_snowfall',
+                'albedo',
+                'liquid_precipitation_depth',
+                'liquid_precipitation_quantity',
+            ]
             # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
-            df.index = pd.date_range(start="2018-01-01 00:00:00", end="2019-01-01 00:00:00", freq="60T", closed="left",
-                                     tz=int(self.time_zone * 60 * 60))
+            df.index = pd.date_range(start="2018-01-01 00:00:00", end="2019-01-01 00:00:00", freq="60T", closed="left")#.tz_localize(tz=self.time_zone)
             self.dt = df.index
             df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
 
