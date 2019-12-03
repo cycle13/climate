@@ -114,6 +114,7 @@ class EPW(object):
         self.solar_adjusted_mean_radiant_temperature = None
         self.mean_radiant_temperature = None
         self.ground_temperature_at_depth = None
+        self.pedestrian_wind_speed = None
         self.direct_sky_matrix = None
         self.diffuse_sky_matrix = None
         self.total_sky_matrix = None
@@ -163,7 +164,7 @@ class EPW(object):
                 [0.17364817766693127, 0.98480775301220791, 0.0]
             ]
         )
-        self.radiation_rose_angles = np.radians(np.arange(0, 360, 10))
+        self.radiation_rose_angles = np.radians(np.arange(0, 360, 10))[::-1]
         self.tregenza_sky_dome = {
             "patch_vectors": np.array(
             [
@@ -592,6 +593,7 @@ class EPW(object):
                  0.00921483254]),
             "patches_per_row": np.array([60, 60, 60, 60, 48, 48, 48, 48, 36, 36, 24, 24, 12, 12, 1]),
         }
+        # TODO - Add patch vertices here also for 3D plotting purposes!!!!
         self.direct_sky_radiation_rose_values = None
         self.diffuse_sky_radiation_rose_values = None
         self.total_sky_radiation_rose_values = None

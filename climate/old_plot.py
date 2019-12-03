@@ -8,6 +8,34 @@ from windrose import WindroseAxes
 import pandas as pd
 import numpy as np
 
+def radiation_rose(obj, type=0, close=False, savepath=False):
+    if type == 0:
+        vals = obj.direct_sky_radiation_rose_values
+        tx = "Direct radiation"
+    elif type == 1:
+        vals = obj.diffuse_sky_radiation_rose_values
+        tx = "Diffuse radiation"
+    else:
+        vals = obj.total_sky_radiation_rose_values
+        tx = "Total radiation"
+    colors = [cm.inferno(i) for i in np.interp(vals, [min(vals), max(vals)], [0, 1])]
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6), subplot_kw={'projection': "polar"})
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.bar(
+        obj.radiation_rose_angles,
+        vals,
+        width=(np.pi * 2 / 36) - 0.05, zorder=5, bottom=0.0, color=colors, alpha=1)
+    ti = ax.set_title("{} - {} - {} - {}".format(obj.city, obj.country, obj.station_id, tx),
+                      color="#555555", loc="left", fontsize="large")
+    plt.tight_layout()
+
+    if savepath:
+        print("Saving to {}".format(savepath))
+        fig.savefig(savepath, dpi=300, transparent=False, bbox_inches="tight", bbox_extra_artists=[ti, ])
+    if close:
+        plt.close()
+
 
 def psychrometric_chart(df, nbins=50, cm="Greys", close=False, savepath=False):
     hr = df.HumidityRatio
