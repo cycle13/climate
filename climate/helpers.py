@@ -68,6 +68,25 @@ def angle_between(v1, v2, degrees=False):
 # Generic climate methods #
 ###########################
 
+def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_patch_values):
+    ground_reference = 0
+    rose_vector_result = []
+    for vec in rose_vectors:
+        radiation = 0
+        ground_radiation = 0
+        patch_number = 0
+        for patch_vector in sky_dome_patch_normal_vectors:
+            vecAngle = angle_between(patch_vector, vec, degrees=True)
+            if vecAngle < 90:
+                check = 1
+                if check == 1:
+                    radiation = radiation + sky_dome_patch_values[patch_number] * math.cos(math.radians(vecAngle))
+                    ground_radiation = ground_radiation + sky_dome_patch_values[patch_number] * math.cos(
+                        math.radians(vecAngle)) * (ground_reference / 100) * 0.5
+            patch_number += 1
+        rose_vector_result.append(ground_radiation + radiation)
+    return rose_vector_result
+
 def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
     roughness = {
         0: 0.0002,  # Water surfaces: seas and Lakes
