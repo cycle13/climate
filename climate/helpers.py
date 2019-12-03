@@ -1,9 +1,15 @@
 import os
 import math
+import re
+import numpy as np
 
 ##########################
 # Generic helper methods #
 ##########################
+
+
+def slugify(text):
+    return re.sub(r'\W+', '', text)
 
 
 def interpret(val):
@@ -38,6 +44,24 @@ def rgb_to_hex(rgb_list):
         return '#%02x%02x%02x' % (int(rgb_list[0]), int(rgb_list[1]), int(rgb_list[2]))
     else:
         return '#%02x%02x%02x' % (int(rgb_list[0] * 255), int(rgb_list[1] * 255), int(rgb_list[2] * 255))
+
+
+####################
+# Geometry methods #
+####################
+
+def unit_vector(vector):
+    return vector / np.linalg.norm(vector)
+
+
+def angle_between(v1, v2, degrees=False):
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    angle = np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+    if degrees:
+        return np.degrees(angle)
+    else:
+        return angle
 
 
 ###########################

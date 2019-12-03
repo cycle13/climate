@@ -1,4 +1,5 @@
 import os
+import pathlib
 import subprocess
 from io import StringIO
 import pandas as pd
@@ -112,7 +113,14 @@ class EPW(object):
         self.standard_effective_temperature = None
         self.solar_adjusted_mean_radiant_temperature = None
         self.mean_radiant_temperature = None
-        self.ground_temperature_at_depth=  None
+        self.ground_temperature_at_depth = None
+        self.direct_sky_matrix = None
+        self.diffuse_sky_matrix = None
+        self.total_sky_matrix = None
+
+        # Path variables
+        self.wea_file = None
+        self.csv_file = None
 
     def read(self):
         with open(self.filepath, "r") as f:
@@ -228,9 +236,26 @@ class EPW(object):
             self.liquid_precipitation_depth = df.liquid_precipitation_depth
             self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
 
-    def to_csv(self, file_path):
+    def to_csv(self, file_path=None):
+        if file_path is None:
+            file_path = pathlib.Path(self.filepath).with_suffix(".csv")
         self.df.to_csv(file_path)
-        return file_path
+        self.csv_file = str(file_path)
+        print("CSV file created: {0:}".format(self.csv_file))
+        return self.csv_file
+
+    def to_wea(self, file_path=None):
+        if file_path is None:
+            file_path = pathlib.Path(self.filepath).with_suffix(".wea")
+        header = "place {0:}_{1:}\nlatitude {2:0.2f}\nlongitude {3:0.2f}\ntime_zone {4:0.0f}\nsite_elevation {5:0.2f}\nweather_data_file_units 1".format(slugify(self.city), slugify(self.country), self.latitude, self.longitude, -self.time_zone / 15, self.elevation)
+        values = []
+        for n, dt in enumerate(self.df.index):
+            values.append("{0:} {1:} {2:}.5 {3:} {4:}".format(dt.month, dt.day, dt.hour, self.direct_normal_radiation.values[n], self.diffuse_horizontal_radiation[n]))
+        with open(file_path, "w") as f:
+            f.write(header + "\n" + "\n".join(values) + "\n")
+        self.wea_file = str(file_path)
+        print("WEA file created: {0:}".format(self.wea_file))
+        return self.wea_file
 
     def run_psychrometrics(self):
         self.wet_bulb_temperature = self.df.apply(lambda x: humidity_ratio_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
@@ -268,3 +293,62 @@ class EPW(object):
         self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.df.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
         print("Pedestrian wind-speed calculated")
         self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
+
+    def run_gendaymtx(self, reinhart=True):
+
+        if self.wea_file is None:
+            self.to_wea()
+
+        diff_mtx_file = pathlib.Path(self.wea_file).with_suffix(".diffmtx")
+        dir_mtx_file = pathlib.Path(self.wea_file).with_suffix(".dirmtx")
+
+        # Create command strings
+        diffuse_mtx_cmd = '"C:/Radiance/bin/gendaymtx" -m {2:} -s -O1 "{0:}" > "{1:}"'.format(self.wea_file, diff_mtx_file,
+                                                                                              2 if reinhart else 1)
+        direct_mtx_cmd = '"C:/Radiance/bin/gendaymtx" -m {2:} -d -O1 "{0:}" > "{1:}"'.format(self.wea_file, dir_mtx_file,
+                                                                                             2 if reinhart else 1)
+
+        # Run commands
+        subprocess.call(diffuse_mtx_cmd, shell=True)
+        subprocess.call(direct_mtx_cmd, shell=True)
+
+        # Load matrices
+        num_of_patches_in_each_row = {
+            1: np.array([30, 30, 24, 24, 18, 12, 6, 1]),
+            2: np.array([60, 60, 60, 60, 48, 48, 48, 48, 36, 36, 24, 24, 12, 12, 1])
+        }
+        patch_conversion_factor = {
+            1: np.array(
+                [0.0435449227, 0.0416418006, 0.0473984151, 0.0406730411, 0.0428934136, 0.0445221864, 0.0455168385,
+                 0.0344199465]),
+            2: np.array(
+                [0.0113221971, 0.0111894547, 0.0109255262, 0.0105335058, 0.0125224872, 0.0117312774, 0.0108025291,
+                 0.00974713106, 0.011436609, 0.00974295956, 0.0119026242, 0.00905126163, 0.0121875626, 0.00612971396,
+                 0.00921483254])
+        }
+
+        # Create the conversion factor for each patch
+        if reinhart:
+            conversion_factor = np.repeat(patch_conversion_factor[2], num_of_patches_in_each_row[2])
+        else:
+            conversion_factor = np.repeat(patch_conversion_factor[1], num_of_patches_in_each_row[1])
+
+        with open(diff_mtx_file, "r") as f:
+            d = [i.strip() for i in f.readlines()][8:]
+        diff_chunks = np.array([[j.split(" ") for j in i[:-1]] for i in chunk(d, 8761)])[1:].astype(np.float64)
+        diff_chunks = np.sum(np.multiply(diff_chunks, [0.265074126, 0.670114631, 0.064811243]), axis=2)
+        diff_chunks = np.multiply(diff_chunks.T, conversion_factor)
+        print("Diffuse radiation matrix created: {0:}".format(str(diff_mtx_file)))
+
+        with open(dir_mtx_file, "r") as f:
+            d = [i.strip() for i in f.readlines()][8:]
+        dir_chunks = np.array([[j.split(" ") for j in i[:-1]] for i in chunk(d, 8761)])[1:].astype(np.float64)
+        dir_chunks = np.sum(np.multiply(dir_chunks, [0.265074126, 0.670114631, 0.064811243]), axis=2)
+        dir_chunks = np.multiply(dir_chunks.T, conversion_factor)
+        print("Direct radiation matrix created: {0:}".format(str(dir_mtx_file)))
+
+        self.direct_sky_matrix = dir_chunks
+        self.diffuse_sky_matrix = diff_chunks
+        self.total_sky_matrix = dir_chunks + diff_chunks
+
+    # def

@@ -8,6 +8,7 @@ from windrose import WindroseAxes
 import pandas as pd
 import numpy as np
 
+
 def psychrometric_chart(df, nbins=50, cm="Greys", close=False, savepath=False):
     hr = df.HumidityRatio
     dbt = df.dry_bulb_temperature
@@ -370,92 +371,53 @@ def utci_heatmap(df, y_move=-0.22, savepath=None, close=True):
         plt.close()
 
 
-def windroset(df, variable, seasonal_period, day_period, nsector=16, cmap=None, savepath=None, cls=True):
+def windrose(epw_object, seasonal_period, day_period, nsector=16, cmap=None, savepath=None, cls=True):
     # Descibe a set of masks to remove unwanted hours of the year
     toy_masks = {
-        "Daily": ((df.index.hour >= 0) & (df.index.hour <= 24)),
-        "Morning": ((df.index.hour >= 5) & (df.index.hour <= 10)),
-        "Midday": ((df.index.hour >= 11) & (df.index.hour <= 13)),
-        "Afternoon": ((df.index.hour >= 14) & (df.index.hour <= 18)),
-        "Evening": ((df.index.hour >= 19) & (df.index.hour <= 22)),
-        "Night": ((df.index.hour >= 23) | (df.index.hour <= 4)),
+        "Daily": ((epw_object.df.index.hour >= 0) & (epw_object.df.index.hour <= 24)),
+        "Morning": ((epw_object.df.index.hour >= 5) & (epw_object.df.index.hour <= 10)),
+        "Midday": ((epw_object.df.index.hour >= 11) & (epw_object.df.index.hour <= 13)),
+        "Afternoon": ((epw_object.df.index.hour >= 14) & (epw_object.df.index.hour <= 18)),
+        "Evening": ((epw_object.df.index.hour >= 19) & (epw_object.df.index.hour <= 22)),
+        "Night": ((epw_object.df.index.hour >= 23) | (epw_object.df.index.hour <= 4)),
 
-        "Annual": ((df.index.month >= 1) & (df.index.month <= 12)),
-        "Spring": ((df.index.month >= 3) & (df.index.month <= 5)),
-        "Summer": ((df.index.month >= 6) & (df.index.month <= 8)),
-        "Autumn": ((df.index.month >= 9) & (df.index.month <= 11)),
-        "Winter": ((df.index.month <= 2) | (df.index.month >= 12))
+        "Annual": ((epw_object.df.index.month >= 1) & (epw_object.df.index.month <= 12)),
+        "Spring": ((epw_object.df.index.month >= 3) & (epw_object.df.index.month <= 5)),
+        "Summer": ((epw_object.df.index.month >= 6) & (epw_object.df.index.month <= 8)),
+        "Autumn": ((epw_object.df.index.month >= 9) & (epw_object.df.index.month <= 11)),
+        "Winter": ((epw_object.df.index.month <= 2) | (epw_object.df.index.month >= 12))
     }
-    speed_mask = (df.wind_speed != 0)
-    direction_mask = (df.wind_direction != 0)
+    speed_mask = (epw_object.wind_speed != 0)
+    direction_mask = (epw_object.wind_direction != 0)
     mask = np.array([toy_masks[day_period], toy_masks[seasonal_period], speed_mask, direction_mask]).all(axis=0)
 
     fig = plt.figure(figsize=(6, 6))
     ax = WindroseAxes.from_ax()
-    if variable == "UniversalThermalClimateIndex":
-        unit = "C"
-        ax.bar(df.wind_direction[mask], df[variable][mask], normed=True,
-               bins=[-100, -40, -27, -13, 0, 9, 26, 32, 38, 46], opening=1, edgecolor='Black',
-               lw=0.25, nsector=nsector,
-               colors=["#053061", "#1A5899", "#347FB9", "#82BBD9", "#BFDCEB", "#FFFFFF", "#F7C1AA", "#E3806B",
-                       "#C84648", "#B2182B"])
-    elif variable == "dry_bulb_temperature":
-        unit = "C"
-        ax.bar(df.wind_direction[mask], df[variable][mask], normed=True,
-               bins=[-15, -5, 5, 15, 25, 35], opening=1, edgecolor='White',
-               lw=0.25, nsector=nsector,
-               cmap=plt.cm.Reds if cmap == None else cmap)
-    elif variable == "relative_humidity":
-        unit = "%"
-        ax.bar(df.wind_direction[mask], df[variable][mask], normed=True,
-               bins=[0, 20, 40, 60, 85], opening=1, edgecolor='White',
-               lw=0.25, nsector=nsector,
-               cmap=plt.cm.Blues if cmap == None else cmap)
-    elif variable == "wind_speed":
-        unit = "m/s"
-        ax.bar(df.wind_direction[mask], df[variable][mask], normed=True,
-               bins=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], opening=1, edgecolor='White',
-               lw=0.25, nsector=nsector,
-               cmap=plt.cm.Purples if cmap == None else cmap)
+    unit = "m/s"
+    ax.bar(epw_object.wind_direction[mask], epw_object.wind_speed[mask], normed=True,
+           bins=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], opening=1, edgecolor='White',
+           lw=0.25, nsector=nsector,
+           cmap=plt.cm.Purples if cmap is None else cmap)
 
     lgd = ax.legend(bbox_to_anchor=(1.1, 0.5), loc='center left', frameon=False, title=unit)
     lgd.get_frame().set_facecolor((1, 1, 1, 0))
     [plt.setp(text, color='#555555') for text in lgd.get_texts()]
     plt.setp(lgd.get_title(), color='#555555')
 
-    if variable == "relative_humidity":
-        lgd.get_texts()[0].set_text("Very dry (<20)")
-        lgd.get_texts()[1].set_text("Dry (20-40)")
-        lgd.get_texts()[2].set_text("Average (40-60)")
-        lgd.get_texts()[3].set_text("Humid (60-85)")
-        lgd.get_texts()[4].set_text("Very humid (>85)")
-    elif variable == "UniversalThermalClimateIndex":
-        lgd.get_texts()[0].set_text("Extreme cold stress")
-        lgd.get_texts()[1].set_text("Very strong cold stress")
-        lgd.get_texts()[2].set_text("Strong cold stress")
-        lgd.get_texts()[3].set_text("Moderate cold stress")
-        lgd.get_texts()[4].set_text("Slight cold stress")
-        lgd.get_texts()[5].set_text("No thermal stress")
-        lgd.get_texts()[6].set_text("Moderate heat stress")
-        lgd.get_texts()[7].set_text("Strong heat stress")
-        lgd.get_texts()[8].set_text("Very strong heat stress")
-        lgd.get_texts()[9].set_text("Extreme heat stress")
-    else:
-        for i, leg in enumerate(lgd.get_texts()):
-            b = leg.get_text().replace('[', '').replace(')', '').split(' : ')
-            lgd.get_texts()[i].set_text(b[0] + ' to ' + b[1])
+    for i, leg in enumerate(lgd.get_texts()):
+        b = leg.get_text().replace('[', '').replace(')', '').split(' : ')
+        lgd.get_texts()[i].set_text(b[0] + ' to ' + b[1])
 
     ax.grid(linestyle=':', color='#555555', alpha=0.5)
     ax.spines['polar'].set_visible(False)
     plt.setp(ax.get_xticklabels(), color='#555555')
     plt.setp(ax.get_yticklabels(), color='#555555')
-    ax.set_title("{2:} - {3:} - {4:}\n{0:} - {1:} - {5:}".format(df.City[0], df.Country[0], seasonal_period, day_period,
-                                                                 variable, df.StationID[0]), y=1.06, color='#555555')
+    ax.set_title("{2:} - {3:} - {4:}\n{0:} - {1:} - {5:}".format(epw_object.city, epw_object.country, seasonal_period, day_period, "Wind speed", epw_object.station_id), y=1.06, color='#555555')
 
     plt.tight_layout()
 
     if savepath:
         print("Saving to {}".format(savepath))
-        plt.savefig(savepath, bbox_extra_artists=(lgd,), bbox_inches='tight', dpi=300, transparent=False)
+        plt.savefig(savepath, bbox_extra_artists=(lgd,), bbox_inches='tight', dpi=300, transparent=True)
     if cls:
         plt.close()
