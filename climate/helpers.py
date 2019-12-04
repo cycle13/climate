@@ -194,3 +194,135 @@ def wet_bulb_temperature_relative_humidity(dry_bulb_temperature, relative_humidi
 def temperature_enthalpy_humidity_ratio(enthalpy, humidity_ratio):
     """ Calculate temperature as a function of enthalpy and humidity ratio"""
     return (enthalpy - 2.5 * (humidity_ratio * 1000)) / (1.01 + (0.00189 * humidity_ratio * 1000))
+
+###################
+# NV method stuff #
+###################
+
+
+def dis_sph(N=100):
+    vectors = []
+    TETA=[]
+    SKY=[]
+    offset = 2 / N
+    increment = math.pi * (3 - math.sqrt(5))
+    for i in range(N):
+        y = ((i * offset) - 1) + (offset / 2)
+        r = math.sqrt(1 - math.pow(y, 2))
+        phi = i  * increment
+        x = math.cos(phi) * r
+        z = math.sin(phi) * r
+        Teta = math.atan(z / math.sqrt(math.pow(x, 2) + math.pow(y, 2)))
+        Teta = math.fabs(Teta)
+        TETA.append(Teta)
+        vec = unit_vector([x, y, z])
+        vectors.append(vec)
+        if z > 0:
+            SKY.append("True")
+        else:
+            SKY.append("False")
+    return np.array(vectors), np.array(TETA), np.array(SKY)
+
+def thing1(Tin, Ta, emissivity, k, tickness, hc, Ein, absorptivity):
+    d=5.67*(10**(-8))
+
+    """
+    Convective Heat Transfer for air
+    http://www.engineeringtoolbox.com/convective-heat-transfer-d_430.html
+    The convective heat transfer coefficient of air is approximately equal to
+    hc = 10.45-v+10*v**(1/2)    (2)
+    v = the relative speed of the object through the air (m/s)
+    Note! - this is an empirical equation and can be used for velocities - v - from 2 to 20 m/s.
+    """
+
+    """
+    Emissivity = Absorptivity at a particular wavelength (and direction for “non-diffuse” surfaces).
+    In the case of a surface receiving radiation and emitting radiation there is no reason why these
+    two values should be the same. This is because the incident radiation will be at one wavelength
+    (or range of wavelengths), but the wavelength of emission depends on the temperature of the surface.
+    """
+
+    """
+    The equation for convection can be expressed as:
+    q = hc A dT
+    q = heat transferred per unit time (W)
+    A = heat transfer area of the surface (m2)
+    hc= convective heat transfer coefficient of the process (W/(m2K) or W/(m2oC))
+    dT = temperature difference between the surface and the bulk fluid (K or oC)
+    
+    Heat Transfer Coefficients - Units
+        1 W/(m2K) = 0.85984 kcal/(h m2 oC) = 0.1761 Btu/(ft2 h oF)
+        1 Btu/(ft2 h oF) = 5.678 W/(m2 K) = 4.882 kcal/(h m2 oC)
+        1 kcal/(h m2 oC) = 1.163 W/(m2K) = 0.205 Btu/(ft2 h oF)
+    
+    http://www.engineersedge.com/heat_transfer/convection_heat_transfer.htm
+    """
+
+    Tin=Tin+273.15
+    Ta=Ta+273.15
+    a=emissivity*d
+    b=k/tickness+hc
+    c=-(k*Tin/tickness+Ein*absorptivity+hc*Ta)
+
+
+    Ts=[]
+    nnn=[]
+    try:
+        X = 1/2 * math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a))-1/2*math.sqrt(-(2*b)/(a *math.sqrt((4* (2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27 *a**2 *b**4-256* a**3* c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)))-(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)-(4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2* b**4-256* a**3*c**3)+9*a*b**2)**(1/3))
+        if 0<X:
+            Ts.append(X)
+    except: nnn.append(1)
+
+    try:
+        X = 1/2 *math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a))+1/2*math.sqrt(-(2*b)/(a*math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)))-(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)-(4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3))
+        if 0<X:
+            Ts.append(X)
+    except: nnn.append(2)
+
+    try:
+        X =-1/2 *math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a))-1/2*math.sqrt((2*b)/(a*math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)))-(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)-(4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3))
+        if 0<X:
+            Ts.append(X)
+    except: nnn.append(3)
+
+    try:
+        X = 1/2 *math.sqrt((2*b)/(a*math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)))-(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a)-(4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3))-1/2*math.sqrt((4*(2/3)**(1/3)*c)/(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)+(math.sqrt(3)*math.sqrt(27*a**2*b**4-256*a**3*c**3)+9*a*b**2)**(1/3)/(2**(1/3)*3**(2/3)*a))
+        if 0<X:
+            Ts.append(X)
+    except: nnn.append(4)
+    print(nnn)
+
+    Tsc=[]
+    for i in Ts:
+        Tsc.append(i-273)
+    Eout=[]
+    for i in Ts:
+        E=a*(i**4)
+        Eout.append(E)
+
+def thing2(i, va):
+    """
+    Convective Heat Transfer for air
+    http://bigladdersoftware.com/epx/docs/8-0/engineering-reference/page-020.html
+    The roughness correlation is taken from Figure 1, Page 22.4, ASHRAE Handbook of Fundamentals (ASHRAE 1989).
+
+    hc = D+E*va+F*va**2
+
+    hc = heat transfer coefficient
+    Va = local wind speed calculated at the height above ground of the surface centroid
+    D, E, F = material roughness coefficients
+    """
+    Material = ["Stucco (Very Rough)", "Brick (Rough)", 'Concrete (Medium Rough)', 'Clear pine (Medium Smooth)',
+                'Smooth Plaster(Smooth) ', 'Glass (Very Smooth)']
+    D = [11.58, 12.49, 10.79, 8.23, 10.22, 8.23]
+    E = [5.89, 4.065, 4.192, 4, 3.1, 3.33]
+    F = [0, 0.028, 0, -0.057, 0, -0.036]
+
+    hc = D[i] + E[i] * va + F[i] * va ** 2
+    mt = Material[i]
+
+def thing3(Ta, Skyemissivity):
+    # http://bigladdersoftware.com/epx/docs/8-4/engineering-reference/climate-calculations.html
+    σ = 5.6697 * 10 ** (-8)
+    Ta = Ta + 273.15
+    HorizontalIR = Skyemissivity * σ * (Ta ** 4)
