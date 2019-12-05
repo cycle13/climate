@@ -3,6 +3,7 @@ import math
 import re
 import numpy as np
 
+
 ##########################
 # Generic helper methods #
 ##########################
@@ -50,6 +51,7 @@ def rgb_to_hex(rgb_list):
 # Geometry methods #
 ####################
 
+
 def unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
@@ -78,6 +80,7 @@ def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_
                 radiation += sky_dome_patch_values[patch_number] * math.cos(math.radians(vector_angle))
         rose_vector_result.append(radiation)
     return rose_vector_result
+
 
 def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
     roughness = {
@@ -195,33 +198,34 @@ def temperature_enthalpy_humidity_ratio(enthalpy, humidity_ratio):
     """ Calculate temperature as a function of enthalpy and humidity ratio"""
     return (enthalpy - 2.5 * (humidity_ratio * 1000)) / (1.01 + (0.00189 * humidity_ratio * 1000))
 
+
 ###################
 # NV method stuff #
 ###################
 
 
-def dis_sph(N=100):
+def dis_sph(n_patches=100):
     vectors = []
-    TETA=[]
-    SKY=[]
-    offset = 2 / N
+    thetas = []
+    sky = []
+    offset = 2 / n_patches
     increment = math.pi * (3 - math.sqrt(5))
-    for i in range(N):
+    for i in range(n_patches):
         y = ((i * offset) - 1) + (offset / 2)
         r = math.sqrt(1 - math.pow(y, 2))
-        phi = i  * increment
+        phi = i * increment
         x = math.cos(phi) * r
         z = math.sin(phi) * r
-        Teta = math.atan(z / math.sqrt(math.pow(x, 2) + math.pow(y, 2)))
-        Teta = math.fabs(Teta)
-        TETA.append(Teta)
+        theta = math.atan(z / math.sqrt(math.pow(x, 2) + math.pow(y, 2)))
+        theta = math.fabs(theta)
+        thetas.append(theta)
         vec = unit_vector([x, y, z])
         vectors.append(vec)
         if z > 0:
-            SKY.append("True")
+            sky.append(True)
         else:
-            SKY.append("False")
-    return np.array(vectors), np.array(TETA), np.array(SKY)
+            sky.append(False)
+    return np.array(vectors), np.array(thetas), np.array(sky)
 
 def thing1(Tin, Ta, emissivity, k, tickness, hc, Ein, absorptivity):
     d=5.67*(10**(-8))

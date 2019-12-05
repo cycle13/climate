@@ -3,6 +3,7 @@
 *.diffmtx
 *.dirmtx
 *.h5
+*.wea
 
 
 # Byte-compiled / optimized / DLL files
