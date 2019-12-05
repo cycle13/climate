@@ -8,6 +8,12 @@ import numpy as np
 # Generic helper methods #
 ##########################
 
+def is_mac():
+    if os.name == "posix":
+        return True
+    else:
+        return False
+
 
 def slugify(text):
     return re.sub(r'\W+', '', text)
@@ -202,7 +208,6 @@ def temperature_enthalpy_humidity_ratio(enthalpy, humidity_ratio):
 ###################
 # NV method stuff #
 ###################
-
 
 def dis_sph(n_patches=100):
     vectors = []
