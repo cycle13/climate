@@ -76,6 +76,52 @@ def angle_between(v1, v2, degrees=False):
 # Generic climate methods #
 ###########################
 
+def renamer(original):
+    rename = {
+        "dry_bulb_temperature": "Dry-Bulb Temperature",
+        "dew_point_temperature": "Dew-Point Temperature",
+        "relative_humidity": "Relative Humidity",
+        "atmospheric_station_pressure": "Atmospheric Station Pressure",
+        "extraterrestrial_horizontal_radiation": "Extraterrestrial Horizontal Radiation",
+        "extraterrestrial_direct_normal_radiation": "Extraterrestrial Direct Normal Radiation",
+        "horizontal_infrared_radiation_intensity": "Horizontal Infrared Radiation Intensity",
+        "global_horizontal_radiation": "Global Horizontal Radiation",
+        "direct_normal_radiation": "Direct Normal Radiation",
+        "diffuse_horizontal_radiation": "Diffuse Horizontal Radiation",
+        "global_horizontal_illuminance": "Global Horizontal Illuminance",
+        "direct_normal_illuminance": "Direct Normal Illuminance",
+        "diffuse_horizontal_illuminance": "Diffuse Horizontal Illuminance",
+        "zenith_luminance": "Zenith Luminance",
+        "wind_direction": "Wind Direction",
+        "wind_speed": "Wind Speed",
+        "total_sky_cover": "Total Sky Cover",
+        "opaque_sky_cover": "Opaque Sky Cover",
+        "visibility": "Visibility",
+        "ceiling_height": "Ceiling Height",
+        "present_weather_observation": "Present Weather Observation",
+        "present_weather_codes": "Present Weather Codes",
+        "precipitable_water": "Precipitable Water",
+        "aerosol_optical_depth": "Aerosol Optical Depth",
+        "snow_depth": "Snow Depth",
+        "days_since_last_snowfall": "Days Since Last Snowfall",
+        "albedo": "Albedo",
+        "liquid_precipitation_depth": "Liquid Precipitation Depth",
+        "liquid_precipitation_quantity": "Liquid Precipitation Quantity",
+        "solar_apparent_zenith_angle": "Solar Apparent Zenith Angle",
+        "solar_zenith_angle": "Solar Zenith Angle",
+        "solar_apparent_elevation_angle": "Solar Apparent Elevation Angle",
+        "solar_elevation_angle": "Solar Elevation Angle",
+        "solar_azimuth_angle": "Solar Azimuth Angle",
+        "solar_equation_of_time": "Solar Equation of Time",
+        "humidity_ratio": "Humidity Ratio",
+        "wet_bulb_temperature": "Wet Bulb Temperature",
+        "partial_vapour_pressure_moist_air": "Partial Vapour Pressure of Moist air",
+        "enthalpy": "Enthalpy",
+        "specific_volume_moist_air": "Specific Volume of Moist Air",
+        "degree_of_saturation": "Degree of Saturation",
+    }
+    return rename[original]
+
 def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_patch_values):
     rose_vector_result = []
     for vec in rose_vectors:
@@ -85,7 +131,7 @@ def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_
             if vector_angle < 90:
                 radiation += sky_dome_patch_values[patch_number] * math.cos(math.radians(vector_angle))
         rose_vector_result.append(radiation)
-    return rose_vector_result
+    return np.array(rose_vector_result)
 
 
 def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
@@ -209,28 +255,7 @@ def temperature_enthalpy_humidity_ratio(enthalpy, humidity_ratio):
 # NV method stuff #
 ###################
 
-def dis_sph(n_patches=100):
-    vectors = []
-    thetas = []
-    sky = []
-    offset = 2 / n_patches
-    increment = math.pi * (3 - math.sqrt(5))
-    for i in range(n_patches):
-        y = ((i * offset) - 1) + (offset / 2)
-        r = math.sqrt(1 - math.pow(y, 2))
-        phi = i * increment
-        x = math.cos(phi) * r
-        z = math.sin(phi) * r
-        theta = math.atan(z / math.sqrt(math.pow(x, 2) + math.pow(y, 2)))
-        theta = math.fabs(theta)
-        thetas.append(theta)
-        vec = unit_vector([x, y, z])
-        vectors.append(vec)
-        if z > 0:
-            sky.append(True)
-        else:
-            sky.append(False)
-    return np.array(vectors), np.array(thetas), np.array(sky)
+
 
 def thing1(Tin, Ta, emissivity, k, tickness, hc, Ein, absorptivity):
     d=5.67*(10**(-8))

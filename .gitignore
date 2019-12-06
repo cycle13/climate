@@ -82,7 +82,7 @@ docs/_build/
 target/
 
 # Jupyter Notebook
-test/.ipynb_checkpoints
+.ipynb_checkpoints
 
 # IPython
 profile_default/

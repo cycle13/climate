@@ -4,6 +4,7 @@ import subprocess
 from io import StringIO
 import pandas as pd
 import numpy as np
+from scipy import spatial
 
 from .helpers import *
 
@@ -49,6 +50,16 @@ class BuroHappold(object):
 class EPW(object):
 
     def __init__(self, file_path):
+
+        # NV method variables
+        self.vec = None
+        self.thetas = None
+        self.sky = None
+        self.sky_emissivity = None
+        self.nv_horizontal_ir = None
+        self.convective_heat_transfer_coefficient = None
+        self.distances = None
+        self.indices = None
 
         # Metadata
         self.filepath = os.path.abspath(file_path) if file_path is not None else None
@@ -104,6 +115,7 @@ class EPW(object):
         self.liquid_precipitation_quantity = None
 
         # Derived variables
+        self.partial_vapour_pressure = None
         self.solar_altitude = None
         self.solar_azimuth = None
         self.wet_bulb_temperature = None
@@ -2397,12 +2409,24 @@ class EPW(object):
         return self.wea_file
 
     def run_psychrometrics(self):
-        self.wet_bulb_temperature = self.df.apply(lambda x: humidity_ratio_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
+        self.wet_bulb_temperature = self.df.apply(
+            lambda x: wet_bulb_temperature_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"],
+                                                       relative_humidity=x["relative_humidity"] / 100,
+                                                       pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
         print("Wet-bulb temperature calculated")
-        self.enthalpy = self.df.apply(lambda x: enthalpy_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
+
+        self.enthalpy = self.df.apply(
+            lambda x: enthalpy_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"],
+                                                 relative_humidity=x["relative_humidity"] / 100,
+                                                 pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
         print("Enthalpy calculated")
-        self.humidity_ratio = self.df.apply(lambda x: wet_bulb_temperature_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"], relative_humidity=x["relative_humidity"] / 100, pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
+
+        self.humidity_ratio = self.df.apply(
+            lambda x: humidity_ratio_relative_humidity(dry_bulb_temperature=x["dry_bulb_temperature"],
+                                                             relative_humidity=x["relative_humidity"] / 100,
+                                                             pressure=x["atmospheric_station_pressure"] / 1000), axis=1)
         print("Humidity ratio calculated")
+
         self.wet_bulb_temperature.name = "wet_bulb_temperature"
         self.enthalpy.name = "enthalpy"
         self.humidity_ratio.name = "humidity_ratio"
@@ -2427,11 +2451,6 @@ class EPW(object):
         self.ground_temperature_at_depth = pd.Series(name="ground_temperature_at_depth", index=self.df.index, data=gndts)
         print("Ground temperature calculated")
         self.df = pd.concat([self.df, self.ground_temperature_at_depth], axis=1)
-
-    def run_pedestrian_wind_speed(self):
-        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.df.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
-        print("Pedestrian wind-speed calculated")
-        self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
 
     def gendaymtx(self, direct=True, reinhart=False):
         # Get dict for selected skytype
@@ -2470,9 +2489,163 @@ class EPW(object):
         sky_dome = self.reinhart_sky_dome if reinhart else self.tregenza_sky_dome
 
         self.direct_sky_matrix = self.gendaymtx(direct=True, reinhart=reinhart)
+        print("Direct sky matrix calculated: {0:}".format(os.path.relpath(pathlib.Path(self.wea_file).with_suffix(".dirmtx"))))
         self.diffuse_sky_matrix = self.gendaymtx(direct=False, reinhart=reinhart)
+        print("Diffuse sky matrix calculated: {0:}".format(os.path.relpath(pathlib.Path(self.wea_file).with_suffix(".diffmtx"))))
         self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
 
         self.direct_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, sky_dome["patch_vectors"], self.direct_sky_matrix.sum(axis=0))
         self.diffuse_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, sky_dome["patch_vectors"], self.diffuse_sky_matrix.sum(axis=0))
         self.total_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, sky_dome["patch_vectors"], self.total_sky_matrix.sum(axis=0))
+
+    def plot_radiation_rose(self, close=False, savepath=False):
+        import matplotlib.pyplot as plt
+        from matplotlib import cm
+        if self.total_sky_radiation_rose_values is None:
+            print("Run self.run_gendaymtx() before plotting radiation roses")
+            return
+
+        max_val = self.total_sky_radiation_rose_values.max() / 1000
+        for tx, vals in {"Direct radiation": self.direct_sky_radiation_rose_values, "Diffuse radiation": self.diffuse_sky_radiation_rose_values, "Total radiation": self.total_sky_radiation_rose_values}.items():
+            vals = vals / 1000
+            colors = [cm.OrRd_r(i) for i in np.interp(vals, [min(vals), max(vals)], [0, 1])]
+            fig, ax = plt.subplots(1, 1, figsize=(6, 6), subplot_kw={'projection': "polar"})
+            ax.set_theta_zero_location("N")
+            ax.set_theta_direction(-1)
+            ax.bar(
+                self.radiation_rose_angles,
+                vals,
+                width=(np.pi * 2 / 36) - 0.05, zorder=5, bottom=0.0, color=colors, alpha=1)
+            ax.set_ylim(0, max_val)
+            ax.spines['polar'].set_visible(False)
+            ax.set_xticklabels(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
+            ti = ax.set_title("{} - {} - {}\n{}".format(self.city, self.country, self.station_id, tx), color="k", loc="left", va="bottom", ha="left", fontsize="large", y=1)
+            plt.tight_layout()
+
+            if savepath:
+                print("Saving to {}".format(savepath))
+                fig.savefig(savepath, dpi=300, transparent=False, bbox_inches="tight", bbox_extra_artists=[ti, ])
+            if close:
+                plt.close()
+
+    # Environment stuff
+
+
+    # def gen_humidity_ratio_relative_humidity(self):
+    #     if self.partial_vapour_pressure is None:
+    #         self.gen_partial_vapour_pressure()
+    #     pvp = self.relative_humidity / 100 * self.partial_vapour_pressure
+    #     # calculate humidity ratio
+    #     self.humidity_ratio = 0.621945 * pvp / (self.atmospheric_station_pressure - pvp) # possibly self.atmospheric_station_pressure / 1000 ???
+    #
+    # def gen_enthalpy(self):
+    #     if self.humidity_ratio is None:
+    #         self.gen_humidity_ratio_relative_humidity()
+    #     self.enthalpy = 1.005 * self.dry_bulb_temperature + self.humidity_ratio * (2501 + 1.86 * self.dry_bulb_temperature)
+    #
+    # def gen_wet_bulb_temperature(self):
+    #     if self.humidity_ratio is None:
+    #         self.gen_humidity_ratio_relative_humidity()
+    #     if self.partial_vapour_pressure is None:
+    #         self.gen_partial_vapour_pressure()
+    #
+    #     # Initial Wet Bulb Temp (equal to dry_bulb_temperature)
+    #     wet_bulb_temperature1 = self.dry_bulb_temperature
+    #
+    #     # calculate saturation humidity ratio of wet bulb temperature
+    #     saturation_vapour_pressure = 0.621945 * partial_vapour_pressure(wet_bulb_temperature1) / (
+    #                 self.atmospheric_station_pressure * 1000 - partial_vapour_pressure(wet_bulb_temperature1))
+    #
+    #     # calculate humidity ratio of partial vapour pressure
+    #     humidity_ratio = humidity_ratio_relative_humidity(dry_bulb_temperature, relative_humidity, pressure)
+    #
+    #     # calculate wet bulb temperature
+    #     wet_bulb_temperature2 = ((
+    #                                          2501 + 1.86 * dry_bulb_temperature) * humidity_ratio - 2501 * saturation_vapour_pressure + 1.006 * dry_bulb_temperature) / (
+    #                                         1.006 + 4.186 * humidity_ratio - 2.326 * saturation_vapour_pressure)
+    #
+    #     myerror = wet_bulb_temperature2 - wet_bulb_temperature1
+    #
+    #     if dry_bulb_temperature < 0:
+    #         while abs(myerror) > 0.001:
+    #             wet_bulb_temperature1 = 0.1 * myerror + wet_bulb_temperature1
+    #             saturation_vapour_pressure = 0.621945 * partial_vapour_pressure(wet_bulb_temperature1) / (
+    #                         pressure * 1000 - partial_vapour_pressure(wet_bulb_temperature1))
+    #             wet_bulb_temperature2 = ((
+    #                                                  2830 + 1.86 * dry_bulb_temperature) * humidity_ratio - 2830 * saturation_vapour_pressure + 1.006 * dry_bulb_temperature) / (
+    #                                                 1.006 + 2.1 * humidity_ratio - 0.24 * saturation_vapour_pressure)
+    #             myerror = wet_bulb_temperature2 - wet_bulb_temperature1
+    #     else:
+    #         while abs(myerror) > 0.001:
+    #             wet_bulb_temperature1 = 0.01 * myerror + wet_bulb_temperature1
+    #             saturation_vapour_pressure = 0.621945 * partial_vapour_pressure(wet_bulb_temperature1) / (
+    #                         pressure * 1000 - partial_vapour_pressure(wet_bulb_temperature1))
+    #             wet_bulb_temperature2 = ((
+    #                                                  2501 + 1.86 * dry_bulb_temperature) * humidity_ratio - 2501 * saturation_vapour_pressure + 1.006 * dry_bulb_temperature) / (
+    #                                                 1.006 + 4.186 * humidity_ratio - 2.326 * saturation_vapour_pressure)
+    #             myerror = wet_bulb_temperature2 - wet_bulb_temperature1
+    #
+    #     self.wet_bulb_temperature = wet_bulb_temperature2
+
+    # NV method stuff
+
+    def gen_pedestrian_wind_speed(self):
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.df.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+        print("Pedestrian wind-speed calculated")
+        self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
+
+    def gen_numerous_vectors(self, n_samples=100):
+        # Returns vec, alt, sky
+        vectors = []
+        thetas = []
+        sky = []
+        offset = 2 / n_samples
+        increment = math.pi * (3 - math.sqrt(5))
+        for i in range(n_samples):
+            y = ((i * offset) - 1) + (offset / 2)
+            r = math.sqrt(1 - math.pow(y, 2))
+            phi = i * increment
+            x = math.cos(phi) * r
+            z = math.sin(phi) * r
+            theta = math.atan(z / math.sqrt(math.pow(x, 2) + math.pow(y, 2)))
+            theta = math.fabs(theta)
+            thetas.append(theta)
+            vec = unit_vector([x, y, z])
+            vectors.append(vec)
+            if z > 0:
+                sky.append(True)
+            else:
+                sky.append(False)
+        self.vec = np.array(vectors)
+        self.thetas = np.array(thetas)
+        self.sky = np.array(sky)
+
+    def gen_sky_emissivity(self):
+        dpt = self.dew_point_temperature + 273.15
+        tsc = self.total_sky_cover / 10
+        self.sky_emissivity = (0.787 + 0.764 * np.log(dpt / 273.15)) * (1 + 0.0224 * tsc - 0.0035 * np.power(tsc, 2) + 0.0028 * np.power(tsc, 3))
+
+    def gen_horizontal_ir(self):
+        stefan_boltzmann_constant = 5.6697E-8
+        dbt = self.dry_bulb_temperature + 273.15
+        self.nv_horizontal_ir = self.sky_emissivity * stefan_boltzmann_constant * np.power(dbt, 4)
+
+    def gen_convective_heat_transfer_coefficient(self, roughness="Concrete (Medium Rough)"):
+        material = {
+            "Stucco (Very Rough)": {"D": 11.58, "E": 5.89, "F": 0},
+            "Brick (Rough)": {"D": 12.49, "E": 4.065, "F": 0.028},
+            'Concrete (Medium Rough)': {"D": 10.79, "E": 4.192, "F": 0},
+            'Clear pine (Medium Smooth)': {"D": 8.23, "E": 4, "F": -0.057},
+            'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
+            'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
+        }
+        ws = self.pedestrian_wind_speed
+        self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + material[roughness]["F"] * np.power(ws, 2)
+
+    def sky_dome_resample(self):
+        # Calculate the distance and indices of the points on the radiation dome, nearby the sample points
+        # This part can be calculated once, regardless of the hour of year
+        # For each vector/point in the dis_sph generated sample points, get the distance and indices of nearby points
+        self.distances, self.indices = spatial.KDTree(self.reinhart_sky_dome["patch_centroids"]).query(self.vec, 3)
+
+
