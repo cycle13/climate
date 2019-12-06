@@ -2466,26 +2466,13 @@ class EPW(object):
 
     def run_gendaymtx(self, reinhart=False):
 
+        # Get dict for selected skytype
+        sky_dome = self.reinhart_sky_dome if reinhart else self.tregenza_sky_dome
+
         self.direct_sky_matrix = self.gendaymtx(direct=True, reinhart=reinhart)
         self.diffuse_sky_matrix = self.gendaymtx(direct=False, reinhart=reinhart)
         self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
 
-        if reinhart:
-            self.direct_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, self.reinhart_sky_dome["patch_vectors"], self.direct_sky_matrix.sum(axis=0))
-            self.diffuse_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors,
-                                                                          self.reinhart_sky_dome["patch_vectors"],
-                                                                          self.diffuse_sky_matrix.sum(axis=0))
-            self.total_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors,
-                                                                          self.reinhart_sky_dome["patch_vectors"],
-                                                                          self.total_sky_matrix.sum(axis=0))
-        else:
-            self.direct_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors,
-                                                                          self.tregenza_sky_dome["patch_vectors"],
-                                                                          self.direct_sky_matrix.sum(axis=0))
-            self.diffuse_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors,
-                                                                           self.tregenza_sky_dome["patch_vectors"],
-                                                                           self.diffuse_sky_matrix.sum(axis=0))
-            self.total_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors,
-                                                                         self.tregenza_sky_dome["patch_vectors"],
-                                                                         self.total_sky_matrix.sum(axis=0))
-
+        self.direct_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, sky_dome["patch_vectors"], self.direct_sky_matrix.sum(axis=0))
+        self.diffuse_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, sky_dome["patch_vectors"], self.diffuse_sky_matrix.sum(axis=0))
+        self.total_sky_radiation_rose_values = radiation_rose_values(self.radiation_rose_vectors, sky_dome["patch_vectors"], self.total_sky_matrix.sum(axis=0))
