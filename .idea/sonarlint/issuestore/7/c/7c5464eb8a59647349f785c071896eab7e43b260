@@ -1,72 +1,0 @@
-
-opython:S117"URename this local variable "Tdp2" to match the regular expression ^[_a-z][a-z0-9_]*$.(×¸ëÎùÿÿÿÿ
-xpython:S117"^Rename this local variable "VaporPressure" to match the regular expression ^[_a-z][a-z0-9_]*$.(Í…ä†ùÿÿÿÿ
-4python:S125"Remove this commented out code.(ÏÒ
-hpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÂïÆšÿÿÿÿÿ
-npython:S117"YRename this local variable "TempSkin" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÆÑÓ
-hpython:S117"SRename this local variable "Pw" to match the regular expression ^[_a-z][a-z0-9_]*$.(”’ÚÂ
-jpython:S3776"TRefactor this function to reduce its Cognitive Complexity from 40 to the 15 allowed.(şúœ•
-?python:S1481")Remove the unused local variable "STORE".(ÏØƒí
-cpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(Èİ¯Í
-spython:S117"YRename this local variable "TempCore" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ùè‡¥ÿÿÿÿÿ
-hpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÓÏçøÿÿÿÿ
-€python:S117"fRename this local variable "PressureInAtmospheres" to match the regular expression ^[_a-z][a-z0-9_]*$.(òÅëËûÿÿÿÿ
-Epython:S1481"*Remove the unused local variable "tr_adj".(ŸÇ¬Šûÿÿÿÿ
-fpython:S1542"KRename function "fn" to match the regular expression ^[a-z_][a-z0-9_]{2,}$.(Û¬÷¨ıÿÿÿÿ
-mpython:S117"SRename this local variable "Tc" to match the regular expression ^[_a-z][a-z0-9_]*$.(“êıÀÿÿÿÿÿ
-qpython:S117"WRename this local variable "W_new2" to match the regular expression ^[_a-z][a-z0-9_]*$.(ŞŞèÿÿÿÿÿ
-mpython:S117"SRename this local variable "Pa" to match the regular expression ^[_a-z][a-z0-9_]*$.(Õ³¡¦øÿÿÿÿ
-gpython:S117"MRename this parameter "N" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÚàÖÆıÿÿÿÿ
-Apython:S1481"&Remove the unused local variable "HE".(Ô“èƒùÿÿÿÿ
-hpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(ûÖ½úÿÿÿÿ
-zpython:S117"eRename this local variable "SkinBloodFlowNeutral" to match the regular expression ^[_a-z][a-z0-9_]*$.(Ê›‡
-Tpython:S1481"9Remove the unused local variable "heat_index_categories".(™ŒÕ½üÿÿÿÿ
-opython:S117"URename this local variable "ehPa" to match the regular expression ^[_a-z][a-z0-9_]*$.(€Æ€îüÿÿÿÿ
-hpython:S117"SRename this local variable "Tf" to match the regular expression ^[_a-z][a-z0-9_]*$.(±Öäú
-spython:S117"^Rename this local variable "SkinBloodFlow" to match the regular expression ^[_a-z][a-z0-9_]*$.(€Ùæ›
-ipython:S117"TRename this local variable "Pws" to match the regular expression ^[_a-z][a-z0-9_]*$.(«Å¢»
-jpython:S117"URename this local variable "Tdp1" to match the regular expression ^[_a-z][a-z0-9_]*$.(¬ñ¹¯
-kpython:S117"WRename this local variable "D_Tmrt" to match the regular expression ^[_a-z][a-z0-9_]*$.(¢§œT
-gpython:S107"RFunction "solar_azimuth" has 9 parameters, which is greater than the 7 authorized.(êÛî„
-dpython:S1481"IRemove the unused local variable "wet_bulb_globe_temperature_categories".(ö£Åİùÿÿÿÿ
-<python:S1481"&Remove the unused local variable "HD".(éâò»
-zpython:S117"`Rename this local variable "TempBodyNeutral" to match the regular expression ^[_a-z][a-z0-9_]*$.(¾ãïıÿÿÿÿ
-Zpython:S1481"?Remove the unused local variable "discomfort_index_categories".(¬î…ñùÿÿÿÿ
-upython:S117"`Rename this local variable "TempSkinNeutral" to match the regular expression ^[_a-z][a-z0-9_]*$.(Õ“õ¤
-ppython:S117"VRename this local variable "W_new" to match the regular expression ^[_a-z][a-z0-9_]*$.(‰¿ï°ùÿÿÿÿ
-Zpython:S1481"?Remove the unused local variable "wind_chill_index_categories".(Í«á”üÿÿÿÿ
-hpython:S117"NRename this parameter "Tc" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÀüÍüÿÿÿÿ
-fpython:S1542"KRename function "fn" to match the regular expression ^[a-z_][a-z0-9_]{2,}$.(Û¬÷¨ıÿÿÿÿ
-zpython:S117"`Rename this local variable "TempCoreNeutral" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦‡ïşÿÿÿÿ
-hpython:S117"SRename this local variable "Pw" to match the regular expression ^[_a-z][a-z0-9_]*$.(”’ÚÂ
-‚python:S1542"gRename function "findSaturatedVaporPressureTorr" to match the regular expression ^[a-z_][a-z0-9_]{2,}$.(ªŞÔÙûÿÿÿÿ
-;python:S1481"%Remove the unused local variable "i".(¯ÇĞä
-mpython:S117"SRename this local variable "Ws" to match the regular expression ^[_a-z][a-z0-9_]*$.(³ õ¶ÿÿÿÿÿ
-hpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(É³ºÿúÿÿÿÿ
-mpython:S107"SFunction "solar_altitude" has 9 parameters, which is greater than the 7 authorized.(†÷¿Ğÿÿÿÿÿ
-@python:S1481"*Remove the unused local variable "ta_adj".(÷èé¹
-cpython:S117"NRename this parameter "Tf" to match the regular expression ^[_a-z][a-z0-9_]*$.(³™Ãî
-Cpython:S1481"(Remove the unused local variable "EREQ".(‰ˆ¿šÿÿÿÿÿ
-cpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(êëĞ÷
-gpython:S117"MRename this parameter "T" to match the regular expression ^[_a-z][a-z0-9_]*$.(ªŞÔÙûÿÿÿÿ
-hpython:S117"NRename this parameter "Tc" to match the regular expression ^[_a-z][a-z0-9_]*$.(„¶‘ÿùÿÿÿÿ
-ipython:S117"TRename this local variable "Tdp" to match the regular expression ^[_a-z][a-z0-9_]*$.(¶Üøß
-fpython:S1542"KRename function "es" to match the regular expression ^[a-z_][a-z0-9_]{2,}$.(°¢Œˆıÿÿÿÿ
-mpython:S117"SRename this local variable "Tk" to match the regular expression ^[_a-z][a-z0-9_]*$.(à»¿ÿÿÿÿÿ
-ipython:S117"TRename this local variable "Pws" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÈÃ¹
-qpython:S117"\Rename this local variable "AirVelocity" to match the regular expression ^[_a-z][a-z0-9_]*$.(¹à…‚
-hpython:S117"NRename this parameter "Ta" to match the regular expression ^[_a-z][a-z0-9_]*$.(õ©—âùÿÿÿÿ
-mpython:S117"SRename this local variable "Tf" to match the regular expression ^[_a-z][a-z0-9_]*$.(—’‘«ıÿÿÿÿ
-Xpython:S1481"=Remove the unused local variable "humidity_index_categories".(¿›Ûúÿÿÿÿ
-Dpython:S1481")Remove the unused local variable "COLDB".(ò£•»ùÿÿÿÿ
-jpython:S3776"TRefactor this function to reduce its Cognitive Complexity from 24 to the 15 allowed.(İôœÉ
-?python:S1481")Remove the unused local variable "TIMEH".(èÓ‹ú
-ipython:S117"TRename this local variable "TIM" to match the regular expression ^[_a-z][a-z0-9_]*$.(àî²ğ
-dpython:S117"ORename this parameter "Tdp" to match the regular expression ^[_a-z][a-z0-9_]*$.(Èİ¯Í
-npython:S117"YRename this local variable "W_normal" to match the regular expression ^[_a-z][a-z0-9_]*$.(»ßìı
-†python:S107"lFunction "solar_adjusted_mean_radiant_temperature" has 9 parameters, which is greater than the 7 authorized.(ã‡Îîşÿÿÿÿ
-Npython:S1481"3Remove the unused local variable "metabolic_rates".(áÔÜ˜úÿÿÿÿ
-hpython:S117"NRename this parameter "Tr" to match the regular expression ^[_a-z][a-z0-9_]*$.(ûÖ½úÿÿÿÿ
-cpython:S117"NRename this parameter "SR" to match the regular expression ^[_a-z][a-z0-9_]*$.(êëĞ÷
-=python:S1481"'Remove the unused local variable "TIM".(àî²ğ
-@python:S1481"*Remove the unused local variable "ta_adj".(ùôİÈ
