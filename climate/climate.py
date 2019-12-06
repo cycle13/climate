@@ -262,10 +262,10 @@ class Weather(object):
 
     # Methods below here are for plotting only
 
-    def heatmap(self, variable, cmap='Greys', close=True, save=False):
+    def plot_heatmap(self, variable, cmap='Greys', close=True, save=False):
         # Construct the save_path and create directory if it doesn't exist
         save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "heatmap_{}.png".format(variable)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
+
 
         # Instantiate figure
         fig, ax = plt.subplots(1, 1, figsize=(15, 5))
@@ -310,12 +310,31 @@ class Weather(object):
 
         # Save figure
         if save:
-            print("Heatmap saved to {}".format(save_path))
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
+            print("Heatmap saved to {}".format(save_path))
         if close:
             plt.close()
 
         return fig
+
+    def plot_diurnal(self, dew_point=False, close=True, save=False):
+        def group(series):
+            result = [
+                series.groupby([series.index.month, series.index.hour]).min().reset_index(drop=True),
+                series.groupby([series.index.month, series.index.hour]).mean().reset_index(drop=True),
+                series.groupby([series.index.month, series.index.hour]).max().reset_index(drop=True)
+            ]
+            return result
+
+        dbtMin, dbtMean, dbtMax = group(self.dry_bulb_temperature)
+        rhMin, rhMean, rhMax = group(self.dew_point_temperature) if dew_point else group(self.relative_humidity)
+        dirSolMean = self.direct_normal_radiation.groupby([self.direct_normal_radiation.index.month, self.direct_normal_radiation.index.hour]).mean().reset_index(drop=True)
+        diffSolMean = self.diffuse_horizontal_radiation.groupby([self.diffuse_horizontal_radiation.index.month, self.diffuse_horizontal_radiation.index.hour]).mean().reset_index(
+            drop=True)
+        globalHorizMean = self.global_horizontal_radiation.groupby([self.global_horizontal_radiation.index.month, self.global_horizontal_radiation.index.hour]).mean().reset_index(
+            drop=True)
+        return None
 
 
 class SkyDome(object):
