@@ -4,6 +4,7 @@
 *.dirmtx
 *.h5
 *.wea
+*.csv
 
 
 # Byte-compiled / optimized / DLL files
