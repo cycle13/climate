@@ -21,6 +21,12 @@ class Weather(object):
 
         # Metadata
         self.file_path = pathlib.Path(file_path).absolute()
+        self.index = pd.date_range(
+            start="2018-01-01 00:00:00",
+            end="2019-01-01 00:00:00",
+            freq="60T",
+            closed="left"
+        )
 
         # Location variables
         self.city = None
@@ -171,11 +177,8 @@ class Weather(object):
         ]
 
         # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
-        df.index = pd.date_range(
-            start="2018-01-01 00:00:00",
-            end="2019-01-01 00:00:00",
-            freq="60T",
-            closed="left").tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))
+        self.index = self.index.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))
+        df.index = self.index
 
         # Drop date/time columns
         df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
@@ -240,7 +243,7 @@ class Weather(object):
             file_path = pathlib.Path(self.file_path).with_suffix(".wea")
         header = "place {0:}_{1:}\nlatitude {2:0.4f}\nlongitude {3:0.4f}\ntime_zone {4:0.2f}\nsite_elevation {5:0.2f}\nweather_data_file_units 1".format(slugify(self.city), slugify(self.country), self.latitude, self.longitude, -self.time_zone / 15, self.elevation)
         values = []
-        for n, dt in enumerate(self.df.index):
+        for n, dt in enumerate(self.index):
             values.append("{0:} {1:} {2:}.5 {3:} {4:}".format(dt.month, dt.day, dt.hour, self.direct_normal_radiation.values[n], self.diffuse_horizontal_radiation[n]))
         with open(file_path, "w") as f:
             f.write(header + "\n" + "\n".join(values) + "\n")
@@ -251,7 +254,7 @@ class Weather(object):
     # Methods below here for derived psychrometrics/solar positioning
 
     def sun_position(self):
-        solar_metrics = get_solarposition(self.df.index, self.latitude, self.longitude)
+        solar_metrics = get_solarposition(self.index, self.latitude, self.longitude)
         solar_metrics.rename(columns={
             'apparent_zenith': 'solar_apparent_zenith_angle',
             'zenith': 'solar_zenith_angle',
@@ -268,6 +271,7 @@ class Weather(object):
         self.solar_equation_of_time = solar_metrics.solar_equation_of_time
         self.df = pd.concat([self.df, solar_metrics], axis=1)
         print("Solar position calculations successful")
+        return self
 
     def psychrometrics(self):
         SetUnitSystem(SI)
@@ -282,6 +286,7 @@ class Weather(object):
         self.degree_of_saturation = psych_metrics.degree_of_saturation
         self.df = pd.concat([self.df, psych_metrics], axis=1)
         print("Psychrometric calculations successful")
+        return self
 
     def gendaymtx(self, direct=True):
 
@@ -2459,11 +2464,12 @@ class Weather(object):
         self.diffuse_sky_matrix = self.gendaymtx(direct=False)
         print("Diffuse sky matrix calculated: {0:}".format(pathlib.Path(self.wea_file).with_suffix(".diffmtx")))
         self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
-        # return self
 
+        return self
 
+    # Methods below here for NV method
 
-
+    
 
     # Methods below here are for plotting only
 
@@ -2527,14 +2533,14 @@ class Weather(object):
         save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "diurnal_{}.png".format("dpt" if dew_point else "rh")
 
         # Group dry-bulb temperatures
-        a_gp = self.dry_bulb_temperature.groupby([self.dry_bulb_temperature.index.month, self.dry_bulb_temperature.index.hour])
+        a_gp = self.dry_bulb_temperature.groupby([self.index.month, self.index.hour])
         a_min = a_gp.min().reset_index(drop=True)
         a_mean = a_gp.mean().reset_index(drop=True)
         a_max = a_gp.max().reset_index(drop=True)
 
         # Group relative humidity / dewpoint temperature
         if dew_point:
-            b_gp = self.dew_point_temperature.groupby([self.dew_point_temperature.index.month, self.dew_point_temperature.index.hour])
+            b_gp = self.dew_point_temperature.groupby([self.index.month, self.index.hour])
             b_var = "Dew-point Temperature (°C)"
         else:
             b_gp = self.relative_humidity.groupby([self.relative_humidity.index.month, self.relative_humidity.index.hour])
@@ -2544,9 +2550,9 @@ class Weather(object):
         b_max = b_gp.max().reset_index(drop=True)
 
         # Group solar radiation
-        c_global_mean = self.global_horizontal_radiation.groupby([self.global_horizontal_radiation.index.month, self.global_horizontal_radiation.index.hour]).mean().reset_index(drop=True)
-        c_diffuse_mean = self.diffuse_horizontal_radiation.groupby([self.diffuse_horizontal_radiation.index.month, self.diffuse_horizontal_radiation.index.hour]).mean().reset_index(drop=True)
-        c_direct_mean = self.direct_normal_radiation.groupby([self.direct_normal_radiation.index.month, self.direct_normal_radiation.index.hour]).mean().reset_index(drop=True)
+        c_global_mean = self.global_horizontal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(drop=True)
+        c_diffuse_mean = self.diffuse_horizontal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(drop=True)
+        c_direct_mean = self.direct_normal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(drop=True)
 
         # Instantiate plot
         fig, ax = plt.subplots(3, 1, figsize=(15, 8))
@@ -2577,12 +2583,12 @@ class Weather(object):
 
         # Format plot area
         [[i.spines[spine].set_visible(False) for spine in ['top', 'right']] for i in ax]
-        [[i.spines[j].set_color('#555555') for i in ax] for j in ['bottom', 'left']]
+        [[i.spines[j].set_color('k') for i in ax] for j in ['bottom', 'left']]
         [i.xaxis.set_ticks(np.arange(0, 288, 24)) for i in ax]
         [i.set_xlim([0, 287]) for i in ax]
         [plt.setp(i.get_yticklabels(), color='k') for i in ax]
         [i.set_xticklabels(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                           ha='left', color='#555555') for i in ax]
+                           ha='left', color='k') for i in ax]
         [i.get_xaxis().set_ticklabels([]) for i in [ax[0], ax[1]]]
         [i.grid(b=True, which='major', axis='both', c='k', ls='--', lw=1, alpha=0.3) for i in ax]
         [i.tick_params(length=0) for i in ax]
@@ -2610,6 +2616,7 @@ class Weather(object):
             print("Diurnal plot saved to {}".format(save_path))
         if close:
             plt.close()
+
         return fig
 
     def plot_radiation_rose(self, save=False, close=False):
@@ -2663,5 +2670,67 @@ class Weather(object):
             if close:
                 plt.close()
             figs.append(fig)
+
         return figs
 
+    def plot_windrose(self, season_period="Annual", day_period="Daily", nsector=16, cmap=None, save=False, close=False):
+        from windrose import WindroseAxes
+
+        # Construct the save_path and create directory if it doesn't exist
+        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "windrose_{}_{}.png".format(season_period, day_period)
+        
+        # Descibe a set of masks to remove unwanted hours of the year
+        toy_masks = {
+            "Daily": ((self.index.hour >= 0) & (self.index.hour <= 24)),
+            "Morning": ((self.index.hour >= 5) & (self.index.hour <= 10)),
+            "Midday": ((self.index.hour >= 11) & (self.index.hour <= 13)),
+            "Afternoon": ((self.index.hour >= 14) & (self.index.hour <= 18)),
+            "Evening": ((self.index.hour >= 19) & (self.index.hour <= 22)),
+            "Night": ((self.index.hour >= 23) | (self.index.hour <= 4)),
+    
+            "Annual": ((self.index.month >= 1) & (self.index.month <= 12)),
+            "Spring": ((self.index.month >= 3) & (self.index.month <= 5)),
+            "Summer": ((self.index.month >= 6) & (self.index.month <= 8)),
+            "Autumn": ((self.index.month >= 9) & (self.index.month <= 11)),
+            "Winter": ((self.index.month <= 2) | (self.index.month >= 12))
+        }
+        speed_mask = (self.wind_speed != 0)
+        direction_mask = (self.wind_direction != 0)
+        mask = np.array([toy_masks[day_period], toy_masks[season_period], speed_mask, direction_mask]).all(axis=0)
+    
+        fig = plt.figure(figsize=(6, 6))
+        ax = WindroseAxes.from_ax()
+        unit = "m/s"
+        ax.bar(self.wind_direction[mask], self.wind_speed[mask], normed=True,
+               bins=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], opening=1, edgecolor='White',
+               lw=0.25, nsector=nsector,
+               cmap=plt.cm.Purples if cmap is None else cmap)
+    
+        lgd = ax.legend(bbox_to_anchor=(1.1, 0.5), loc='center left', frameon=False, title=unit)
+        lgd.get_frame().set_facecolor((1, 1, 1, 0))
+        [plt.setp(text, color='k') for text in lgd.get_texts()]
+        plt.setp(lgd.get_title(), color='k')
+    
+        for i, leg in enumerate(lgd.get_texts()):
+            b = leg.get_text().replace('[', '').replace(')', '').split(' : ')
+            lgd.get_texts()[i].set_text(b[0] + ' to ' + b[1])
+    
+        ax.grid(linestyle=':', color='k', alpha=0.5)
+        ax.spines['polar'].set_visible(False)
+        plt.setp(ax.get_xticklabels(), color='k')
+        plt.setp(ax.get_yticklabels(), color='k')
+        ax.set_title("{2:} - {3:} - {4:}\n{0:} - {1:} - {5:}".format(self.city, self.country, season_period, day_period, "Wind speed", self.station_id), y=1.06, color='k')
+    
+        plt.tight_layout()
+
+        # Save figure
+        if save:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
+            print("Windrose saved to {}".format(save_path))
+        if close:
+            plt.close()
+
+        return fig
+
+    # TODO: plot_wind_weibull, plot_utci_frequency, plot_utci_heatmap
