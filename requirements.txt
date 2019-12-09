@@ -1,8 +1,7 @@
-scipy
+matplotlib
+numpy
+pandas
 psychrolib
 pvlib
-matplotlib
-pandas
-numpy
-pysolar
+scipy
 windrose
