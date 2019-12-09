@@ -7,7 +7,8 @@ import pathlib
 from io import StringIO
 from climate.helpers import slugify, chunk, angle_between, renamer, unit_vector, wind_speed_at_height
 from pvlib.solarposition import get_solarposition
-from psychrolib import SetUnitSystem, SI, CalcPsychrometricsFromRelHum
+from psychrolib import SetUnitSystem, SI, CalcPsychrometricsFromRelHum, GetHumRatioFromRelHum, \
+    GetTDryBulbFromEnthalpyAndHumRatio
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -118,10 +119,13 @@ class Weather(object):
 
         # NV method values
         self.sky_emissivity = None
+        self.convective_heat_transfer_coefficient = None
         self.nv_sample_vectors = None
         self.nv_sample_thetas = None
         self.nv_sample_sky = None
-        self.convective_heat_transfer_coefficient = None
+        self.nv_sample_distances = None
+        self.nv_sample_indices = None
+        self.nv_radiation = None
 
     # Methods below here for read/write
     def read(self, sun_position=False, psychrometrics=False, sky_matrix=False):
@@ -162,7 +166,8 @@ class Weather(object):
             dat = f.readlines()
 
         # Read location data
-        self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = dat[0].strip().split(",")[1:]
+        self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = \
+        dat[0].strip().split(",")[1:]
         self.latitude = float(self.latitude)
         self.longitude = float(self.longitude)
         self.time_zone = float(self.time_zone)
@@ -262,7 +267,7 @@ class Weather(object):
         if psychrometrics:
             self.psychrometrics()
         if sky_matrix:
-            self.sky_matrix()
+            self.sky_matrix(reinhart=True)
 
         return self
 
@@ -313,10 +318,14 @@ class Weather(object):
             raise Exception('No radiation data is available, try loading some first!')
         if file_path is None:
             file_path = pathlib.Path(self.file_path).with_suffix(".wea")
-        header = "place {0:}_{1:}\nlatitude {2:0.4f}\nlongitude {3:0.4f}\ntime_zone {4:0.2f}\nsite_elevation {5:0.2f}\nweather_data_file_units 1".format(slugify(self.city), slugify(self.country), self.latitude, self.longitude, -self.time_zone / 15, self.elevation)
+        header = "place {0:}_{1:}\nlatitude {2:0.4f}\nlongitude {3:0.4f}\ntime_zone {4:0.2f}\nsite_elevation {5:0.2f}\nweather_data_file_units 1".format(
+            slugify(self.city), slugify(self.country), self.latitude, self.longitude, -self.time_zone / 15,
+            self.elevation)
         values = []
         for n, dt in enumerate(self.index):
-            values.append("{0:} {1:} {2:}.5 {3:} {4:}".format(dt.month, dt.day, dt.hour, self.direct_normal_radiation.values[n], self.diffuse_horizontal_radiation[n]))
+            values.append(
+                "{0:} {1:} {2:}.5 {3:} {4:}".format(dt.month, dt.day, dt.hour, self.direct_normal_radiation.values[n],
+                                                    self.diffuse_horizontal_radiation[n]))
         with open(file_path, "w") as f:
             f.write(header + "\n" + "\n".join(values) + "\n")
         self.wea_file = str(file_path)
@@ -374,9 +383,18 @@ class Weather(object):
 
         """
         SetUnitSystem(SI)
-        psych_metrics = self.df.apply(lambda row: CalcPsychrometricsFromRelHum(row.dry_bulb_temperature, row.relative_humidity/100, row.atmospheric_station_pressure), axis=1).apply(pd.Series)
-        psych_metrics.columns = ["humidity_ratio", "wet_bulb_temperature", "dew_point_temperature", "partial_vapour_pressure_moist_air", "enthalpy", "specific_volume_moist_air", "degree_of_saturation", ]
-        self.dew_point_temperature = psych_metrics.dew_point_temperature
+        psych_metrics = self.df.apply(
+            lambda row: CalcPsychrometricsFromRelHum(row.dry_bulb_temperature, row.relative_humidity / 100,
+                                                     row.atmospheric_station_pressure), axis=1).apply(pd.Series)
+        psych_metrics.columns = ["humidity_ratio", "wet_bulb_temperature", "dew_point_temperature",
+                                 "partial_vapour_pressure_moist_air", "enthalpy", "specific_volume_moist_air",
+                                 "degree_of_saturation", ]
+        # Remove dew_point_temperature if it already exists in the weather file
+        if self.dew_point_temperature is None:
+            self.dew_point_temperature = psych_metrics.dew_point_temperature
+        else:
+            psych_metrics.drop(columns=["dew_point_temperature"], inplace=True)
+
         self.humidity_ratio = psych_metrics.humidity_ratio
         self.wet_bulb_temperature = psych_metrics.wet_bulb_temperature
         self.partial_vapour_pressure_moist_air = psych_metrics.partial_vapour_pressure_moist_air
@@ -388,7 +406,7 @@ class Weather(object):
         return self
 
     # Methods below here for sky-dome calculation
-    
+
     def gendaymtx(self, wea_file=None, direct=True, reinhart=False):
         """
         Run the Radiance Gendaymtx program from an input WEA file.
@@ -2611,7 +2629,7 @@ class Weather(object):
 
     # Methods below here for NV method
 
-    def generate_numerous_vectors(self, n_samples=100):
+    def generate_numerous_vectors(self, n_samples=1000):
         # Returns vec, alt, sky
         vectors = []
         thetas = []
@@ -2641,7 +2659,8 @@ class Weather(object):
     def calculate_sky_emissivity(self):
         dpt = self.dew_point_temperature + 273.15
         tsc = self.total_sky_cover / 10
-        self.sky_emissivity = (0.787 + 0.764 * np.log(dpt / 273.15)) * (1 + 0.0224 * tsc - 0.0035 * np.power(tsc, 2) + 0.0028 * np.power(tsc, 3))
+        self.sky_emissivity = (0.787 + 0.764 * np.log(dpt / 273.15)) * (
+                    1 + 0.0224 * tsc - 0.0035 * np.power(tsc, 2) + 0.0028 * np.power(tsc, 3))
         self.df = pd.concat([self.df, self.sky_emissivity], axis=1)
         return self
 
@@ -2649,12 +2668,15 @@ class Weather(object):
         if self.horizontal_infrared_radiation_intensity is None:
             stefan_boltzmann_constant = 5.6697E-8
             dbt = self.dry_bulb_temperature + 273.15
-            self.horizontal_infrared_radiation_intensity = self.sky_emissivity * stefan_boltzmann_constant * np.power(dbt, 4)
+            self.horizontal_infrared_radiation_intensity = self.sky_emissivity * stefan_boltzmann_constant * np.power(
+                dbt, 4)
             self.df = pd.concat([self.df, self.horizontal_infrared_radiation_intensity], axis=1)
         return self
 
     def calculate_pedestrian_wind_speed(self):
-        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index,
+                                               data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in
+                                                     self.wind_speed])
         self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
         return self
 
@@ -2668,11 +2690,36 @@ class Weather(object):
             'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
         }
         ws = self.pedestrian_wind_speed
-        self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + material[roughness]["F"] * np.power(ws, 2)
+        self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + \
+                                                    material[roughness]["F"] * np.power(ws, 2)
         return self
 
+    def resample_sky_dome(self):
+        from scipy import spatial
+        # Calculate the distances and indices between the sample points created using generate_numerous_vectors() method, and the gendaymtx sky-dome, for the closest 3 points.
+        # This part can be calculated once, regardless of the hour of year
+        self.nv_sample_distances, self.nv_sample_indices = spatial.KDTree(self.patch_centroids).query(
+            self.nv_sample_vectors, 3)
 
-    
+    def calculate_numerous_vector_radiation_values(self):
+
+        numerous_vector_radiation_values = []
+        for total_sky_matrix_hour in self.total_sky_matrix:
+            # Calculate NValues
+            n_values = (total_sky_matrix_hour[self.nv_sample_indices] * self.nv_sample_distances).sum(axis=1) / self.nv_sample_distances.sum(axis=1)
+
+            # Replace values where vectors are below ground
+            n_values = np.where(self.nv_sample_vectors[:, 2] <= 0, 0, n_values)
+
+            total_sky_matrix_hour_radiation = sum(total_sky_matrix_hour)  # total hourly radiation from original sky matrix
+            resampled_sky_matrix_hour_radiation = sum(n_values)  # total hourly radiation from sampled sky matrix
+
+            numerous_vector_radiation_values.append(np.where(n_values != 0, n_values / resampled_sky_matrix_hour_radiation * total_sky_matrix_hour_radiation, 0))
+
+        self.nv_radiation = np.array(numerous_vector_radiation_values)
+
+        return self
+
     # Methods below here are for plotting only
 
     def plot_heatmap(self, variable, cmap='Greys', close=True, save=False):
@@ -2717,7 +2764,8 @@ class Weather(object):
         cb = fig.colorbar(heatmap, orientation='horizontal', drawedges=False, fraction=0.05, aspect=100, pad=0.075)
         plt.setp(plt.getp(cb.ax.axes, 'xticklabels'), color='k')
         cb.outline.set_visible(False)
-        plt.title("{}\n{} - {} - {}".format(renamer(series.columns[0]), self.city, self.country, self.station_id), color='k', y=1.01)
+        plt.title("{}\n{} - {} - {}".format(renamer(series.columns[0]), self.city, self.country, self.station_id),
+                  color='k', y=1.01)
         plt.tight_layout()
 
         # Save figure
@@ -2732,7 +2780,8 @@ class Weather(object):
 
     def plot_diurnal(self, dew_point=False, close=True, save=False):
         # Construct the save_path and create directory if it doesn't exist
-        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "diurnal_{}.png".format("dpt" if dew_point else "rh")
+        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "diurnal_{}.png".format(
+            "dpt" if dew_point else "rh")
 
         # Group dry-bulb temperatures
         a_gp = self.dry_bulb_temperature.groupby([self.index.month, self.index.hour])
@@ -2745,40 +2794,49 @@ class Weather(object):
             b_gp = self.dew_point_temperature.groupby([self.index.month, self.index.hour])
             b_var = "Dew-point Temperature (°C)"
         else:
-            b_gp = self.relative_humidity.groupby([self.relative_humidity.index.month, self.relative_humidity.index.hour])
+            b_gp = self.relative_humidity.groupby(
+                [self.relative_humidity.index.month, self.relative_humidity.index.hour])
             b_var = 'Relative Humidity (%)'
         b_min = b_gp.min().reset_index(drop=True)
         b_mean = b_gp.mean().reset_index(drop=True)
         b_max = b_gp.max().reset_index(drop=True)
 
         # Group solar radiation
-        c_global_mean = self.global_horizontal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(drop=True)
-        c_diffuse_mean = self.diffuse_horizontal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(drop=True)
-        c_direct_mean = self.direct_normal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(drop=True)
+        c_global_mean = self.global_horizontal_radiation.groupby(
+            [self.index.month, self.index.hour]).mean().reset_index(drop=True)
+        c_diffuse_mean = self.diffuse_horizontal_radiation.groupby(
+            [self.index.month, self.index.hour]).mean().reset_index(drop=True)
+        c_direct_mean = self.direct_normal_radiation.groupby([self.index.month, self.index.hour]).mean().reset_index(
+            drop=True)
 
         # Instantiate plot
         fig, ax = plt.subplots(3, 1, figsize=(15, 8))
 
         # Plot DBT
         [ax[0].plot(a_mean.iloc[i:i + 24], color='#BC204B', lw=2, label='Average') for i in np.arange(0, 288)[::24]]
-        [ax[0].fill_between(np.arange(i, i + 24), a_min.iloc[i:i + 24], a_max.iloc[i:i + 24], color='#BC204B', alpha=0.2, label='Range') for i in np.arange(0, 288)[::24]]
+        [ax[0].fill_between(np.arange(i, i + 24), a_min.iloc[i:i + 24], a_max.iloc[i:i + 24], color='#BC204B',
+                            alpha=0.2, label='Range') for i in np.arange(0, 288)[::24]]
         ax[0].set_ylabel('Dry-bulb Temperature (°C)', labelpad=2, color='k')
         ax[0].yaxis.set_major_locator(MaxNLocator(7))
 
         # Plot DPT / RH
         [ax[1].plot(b_mean.iloc[i:i + 24], color='#00617F', lw=2, label='Average') for i in np.arange(0, 288)[::24]]
-        [ax[1].fill_between(np.arange(i, i + 24), b_min.iloc[i:i + 24], b_max.iloc[i:i + 24], color='#00617F', alpha=0.2, label='Range') for i in np.arange(0, 288)[::24]]
+        [ax[1].fill_between(np.arange(i, i + 24), b_min.iloc[i:i + 24], b_max.iloc[i:i + 24], color='#00617F',
+                            alpha=0.2, label='Range') for i in np.arange(0, 288)[::24]]
         ax[1].set_ylabel(b_var, labelpad=2, color='k')
         ax[1].yaxis.set_major_locator(MaxNLocator(7))
         if not dew_point:
             ax[1].set_ylim([0, 100])
 
         # Plot solar
-        [ax[2].plot(c_direct_mean.iloc[i:i + 24], color='#FF8F1C', lw=1.5, ls='--', label='Direct Normal Radiation') for i in
+        [ax[2].plot(c_direct_mean.iloc[i:i + 24], color='#FF8F1C', lw=1.5, ls='--', label='Direct Normal Radiation') for
+         i in
          np.arange(0, 288)[::24]]
-        [ax[2].plot(c_diffuse_mean.iloc[i:i + 24], color='#FF8F1C', lw=1.5, ls=':', label='Diffuse Horizontal Radiation') for i
+        [ax[2].plot(c_diffuse_mean.iloc[i:i + 24], color='#FF8F1C', lw=1.5, ls=':',
+                    label='Diffuse Horizontal Radiation') for i
          in np.arange(0, 288)[::24]]
-        [ax[2].plot(c_global_mean.iloc[i:i + 24], color='#FF8F1C', lw=2, ls='-', label='Global Horizontal Radiation') for
+        [ax[2].plot(c_global_mean.iloc[i:i + 24], color='#FF8F1C', lw=2, ls='-', label='Global Horizontal Radiation')
+         for
          i in np.arange(0, 288)[::24]]
         ax[2].set_ylabel('Solar Radiation (W/m$^{2}$)', labelpad=2, color='k')
         ax[2].yaxis.set_major_locator(MaxNLocator(7))
@@ -2799,7 +2857,8 @@ class Weather(object):
 
         # Legend
         handles, labels = ax[2].get_legend_handles_labels()
-        lgd = ax[2].legend(bbox_to_anchor=(0.5, -0.2), loc=8, ncol=3, borderaxespad=0., frameon=False, handles=[handles[0], handles[12], handles[24]], labels=[labels[0], labels[12], labels[24]])
+        lgd = ax[2].legend(bbox_to_anchor=(0.5, -0.2), loc=8, ncol=3, borderaxespad=0., frameon=False,
+                           handles=[handles[0], handles[12], handles[24]], labels=[labels[0], labels[12], labels[24]])
         lgd.get_frame().set_facecolor((1, 1, 1, 0))
         [plt.setp(text, color='k') for text in lgd.get_texts()]
 
@@ -2844,10 +2903,13 @@ class Weather(object):
 
         max_val = total_sky_radiation_rose_values.max() / 1000
         figs = []
-        for tx, vals in {"Direct Radiation": direct_sky_radiation_rose_values, "Diffuse Radiation": diffuse_sky_radiation_rose_values, "Total Radiation": total_sky_radiation_rose_values}.items():
+        for tx, vals in {"Direct Radiation": direct_sky_radiation_rose_values,
+                         "Diffuse Radiation": diffuse_sky_radiation_rose_values,
+                         "Total Radiation": total_sky_radiation_rose_values}.items():
 
             # Construct the save_path and create directory if it doesn't exist
-            save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "radiationrose_{}.png".format(tx)
+            save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "radiationrose_{}.png".format(
+                tx)
 
             vals = vals / 1000
             colors = [cm.OrRd(i) for i in np.interp(vals, [min(vals), max(vals)], [0, 1])]
@@ -2857,11 +2919,12 @@ class Weather(object):
             ax.bar(
                 self.radiation_rose_angles,
                 vals,
-                width=(np.pi * 2 / 36), zorder=5, bottom=0.0, color=colors, alpha=1, edgecolor="w", linewidth=0)
+                width=(np.pi * 2 / 37), zorder=5, bottom=0.0, color=colors, alpha=1, edgecolor="w", linewidth=0)  # 37 to make the width slightly smaller
             ax.set_ylim(0, max_val)
             ax.spines['polar'].set_visible(False)
             ax.set_xticklabels(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
-            ti = ax.set_title("{}\n{} - {} - {}".format(tx, self.city, self.country, self.station_id), color="k", loc="left", va="bottom", ha="left", fontsize="large", y=1)
+            ti = ax.set_title("{}\n{} - {} - {}".format(tx, self.city, self.country, self.station_id), color="k",
+                              loc="left", va="bottom", ha="left", fontsize="large", y=1)
             plt.tight_layout()
 
             # Save figure
@@ -2879,8 +2942,9 @@ class Weather(object):
         from windrose import WindroseAxes
 
         # Construct the save_path and create directory if it doesn't exist
-        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "windrose_{}_{}.png".format(season_period, day_period)
-        
+        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "windrose_{}_{}.png".format(
+            season_period, day_period)
+
         # Descibe a set of masks to remove unwanted hours of the year
         toy_masks = {
             "Daily": ((self.index.hour >= 0) & (self.index.hour <= 24)),
@@ -2889,7 +2953,7 @@ class Weather(object):
             "Afternoon": ((self.index.hour >= 14) & (self.index.hour <= 18)),
             "Evening": ((self.index.hour >= 19) & (self.index.hour <= 22)),
             "Night": ((self.index.hour >= 23) | (self.index.hour <= 4)),
-    
+
             "Annual": ((self.index.month >= 1) & (self.index.month <= 12)),
             "Spring": ((self.index.month >= 3) & (self.index.month <= 5)),
             "Summer": ((self.index.month >= 6) & (self.index.month <= 8)),
@@ -2899,7 +2963,7 @@ class Weather(object):
         speed_mask = (self.wind_speed != 0)
         direction_mask = (self.wind_direction != 0)
         mask = np.array([toy_masks[day_period], toy_masks[season_period], speed_mask, direction_mask]).all(axis=0)
-    
+
         fig = plt.figure(figsize=(6, 6))
         ax = WindroseAxes.from_ax()
         unit = "m/s"
@@ -2907,32 +2971,230 @@ class Weather(object):
                bins=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], opening=1, edgecolor='White',
                lw=0.25, nsector=nsector,
                cmap=plt.cm.Purples if cmap is None else cmap)
-    
+
         lgd = ax.legend(bbox_to_anchor=(1.1, 0.5), loc='center left', frameon=False, title=unit)
         lgd.get_frame().set_facecolor((1, 1, 1, 0))
         [plt.setp(text, color='k') for text in lgd.get_texts()]
         plt.setp(lgd.get_title(), color='k')
-    
+
         for i, leg in enumerate(lgd.get_texts()):
             b = leg.get_text().replace('[', '').replace(')', '').split(' : ')
             lgd.get_texts()[i].set_text(b[0] + ' to ' + b[1])
-    
+
         ax.grid(linestyle=':', color='k', alpha=0.5)
         ax.spines['polar'].set_visible(False)
         plt.setp(ax.get_xticklabels(), color='k')
         plt.setp(ax.get_yticklabels(), color='k')
-        ax.set_title("{2:} - {3:} - {4:}\n{0:} - {1:} - {5:}".format(self.city, self.country, season_period, day_period, "Wind speed", self.station_id), y=1.06, color='k')
-    
+        ax.set_title("{2:} - {3:} - {4:}\n{0:} - {1:} - {5:}".format(self.city, self.country, season_period, day_period,
+                                                                     "Wind speed", self.station_id), y=1.06, color='k')
+
         plt.tight_layout()
 
         # Save figure
         if save:
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
+            plt.savefig(save_path, bbox_extra_artists=(lgd,), bbox_inches='tight', dpi=300, transparent=False)
             print("Windrose saved to {}".format(save_path))
         if close:
             plt.close()
 
         return fig
 
-    # TODO: plot_wind_weibull, plot_utci_frequency, plot_utci_heatmap
+    def plot_psychrometrics(self, nbins=50, cm="Greys", close=False, save=False):
+        # Construct the save_path and create directory if it doesn't exist
+        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "psychrometrics.png"
+
+        hr = self.humidity_ratio
+        dbt = self.dry_bulb_temperature
+
+        dry_bulb_temperature_plot_range = range(-20, 51, 1)
+        humidity_ratio_plot_range = [i / 10000 for i in range(0, 301, 1)]
+        enthalpy_plot_range = range(-10, 120, 10)
+        relative_humidity_plot_range = [i / 100 for i in range(0, 101, 10)]
+
+        # figure instantiation
+        fig, ax = plt.subplots(1, 1, figsize=(15, 8))
+
+        # plot values from weather file
+        counts, xedges, yedges, im = ax.hist2d(dbt, hr, bins=nbins, cmin=1, alpha=0.9, normed=False, cmap=cm, lw=0,
+                                               zorder=0)
+
+        # y-axis formatting
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position("right")
+        ax.set_ylim(0, 0.03)
+        ax.set_yticks([i / 1000 for i in range(0, 35, 5)])
+        ax.set_ylabel("Humidity ratio ($kg_{water}/kg_{air}$)", color="k", fontsize="x-large")
+
+        # x-axis formatting
+        ax.set_xlim(-20, 50)
+        ax.set_xticks(range(-20, 55, 5))
+        ax.set_xlabel("Dry-bulb temperature ($°C$)", color="k", fontsize="x-large")
+        ax.tick_params(axis='both', colors='k')
+
+        # canvas formatting
+        ax.tick_params(axis="both", color="k", grid_color="k", grid_alpha=1, grid_lw=0.5)
+        for edge in ["right", "bottom"]:
+            ax.spines[edge].set_alpha(1)
+            ax.spines[edge].set_color("k")
+            ax.spines[edge].set_lw(1)
+        for edge in ["left", "top"]:
+            ax.spines[edge].set_visible(False)
+
+        # relative humidity grid/curves
+        n = 0
+        for rh in relative_humidity_plot_range:
+            h_r = [GetHumRatioFromRelHum(i, rh, 101350) for i in dry_bulb_temperature_plot_range]
+            ax.plot(dry_bulb_temperature_plot_range, h_r, color="k", alpha=1, lw=0.2)
+            # Fill the top part of the plot
+            if rh == 1:
+                ax.fill_between(dry_bulb_temperature_plot_range, h_r, 0.031, interpolate=True, color='w', lw=0,
+                                edgecolor=None,
+                                zorder=4)
+            # add annotation describing line
+            ax.text(30, GetHumRatioFromRelHum(30, rh, 101350) + 0.0, "{0:0.0f}% RH".format(rh * 100),
+                    ha="right", va="bottom", rotation=0, zorder=9, fontsize="small", color="k")  # n*55
+            n += 1 / len(relative_humidity_plot_range)
+
+        # TODO: Fix enthalpy grid curves
+        # # enthalpy grid/curves
+        # for enthalpy in enthalpy_plot_range:
+        #     ys = [0, 0.030]
+        #     xs = np.array([GetTDryBulbFromEnthalpyAndHumRatio(enthalpy, i) for i in ys]) /1000
+        #     if (enthalpy <= 50) & (enthalpy != 30):
+        #         ax.text(xs[0], 0.0002, "{}kJ/kg".format(enthalpy), ha="right", va="bottom", color="k", zorder=9,
+        #                 fontsize="small")
+        #     else:
+        #         pass
+        #     # ax.text(50, ys[0], "{}kJ/kg".format(enthalpy), ha="right", va="bottom", color="#555555", zorder=9, fontsize="small")
+        #     ax.plot(xs, ys, color="k", alpha=1, lw=0.2)
+
+        # grid formatting
+        ax.grid(True, lw=0.2, zorder=5)
+
+        # Generating summary metrics
+        min_dbt = self.df[self.index == self.dry_bulb_temperature.idxmin()].squeeze()
+        max_dbt = self.df[self.index == self.dry_bulb_temperature.idxmax()].squeeze()
+        max_hr = self.df[self.index == self.humidity_ratio.idxmax()].squeeze()
+        max_enthalpy = self.df[self.index == self.enthalpy.idxmax()].squeeze()
+
+        text_fontsize = "medium"
+
+        # Generate peak cooling summary
+        max_dbt_table = "Peak cooling {0:}\n" \
+                        "WS:  {1:>6.1f} m/s\n" \
+                        "WD:  {2:>6.1f} deg\n" \
+                        "DBT: {3:>6.1f} °C\n" \
+                        "WBT: {4:>6.1f} °C\n" \
+                        "RH:  {5:>6.1f} %\n" \
+                        "DPT: {6:>6.1f} °C\n" \
+                        "h:   {7:>6.1f} kJ/kg\n" \
+                        "HR:  {8:<5.4f} kg/kg".format(
+            max_dbt.name.strftime("%b %d %H:%M"),
+            max_dbt.wind_speed,
+            max_dbt.wind_direction,
+            max_dbt.dry_bulb_temperature,
+            max_dbt.wet_bulb_temperature,
+            max_dbt.relative_humidity,
+            max_dbt.dew_point_temperature,
+            max_dbt.enthalpy / 1000,
+            max_dbt.humidity_ratio)
+
+        ax.text(0, 0.98, max_dbt_table, transform=ax.transAxes, ha="left", va="top", zorder=8, fontsize=text_fontsize,
+                color="k", **{'fontname': 'monospace'})
+
+        ## Generate peak heating summary
+        min_dbt_table = "Peak heating {0:}\n" \
+                        "WS:  {1:>6.1f} m/s\n" \
+                        "WD:  {2:>6.1f} deg\n" \
+                        "DBT: {3:>6.1f} °C\n" \
+                        "WBT: {4:>6.1f} °C\n" \
+                        "RH:  {5:>6.1f} %\n" \
+                        "DPT: {6:>6.1f} °C\n" \
+                        "h:   {7:>6.1f} kJ/kg\n" \
+                        "HR:  {8:<5.4f} kg/kg".format(
+            min_dbt.name.strftime("%b %d %H:%M"),
+            min_dbt.wind_speed,
+            min_dbt.wind_direction,
+            min_dbt.dry_bulb_temperature,
+            min_dbt.wet_bulb_temperature,
+            min_dbt.relative_humidity,
+            min_dbt.dew_point_temperature,
+            min_dbt.enthalpy / 1000,
+            min_dbt.humidity_ratio
+        )
+        ax.text(0, 0.72, min_dbt_table, transform=ax.transAxes, ha="left", va="top", zorder=8, fontsize=text_fontsize,
+                color="k", **{'fontname': 'monospace'})
+
+        ## Generate max HumidityRatio summary
+        max_hr_table = "Peak humidity ratio {0:}\n" \
+                        "WS:  {1:>6.1f} m/s\n" \
+                        "WD:  {2:>6.1f} deg\n" \
+                        "DBT: {3:>6.1f} °C\n" \
+                        "WBT: {4:>6.1f} °C\n" \
+                        "RH:  {5:>6.1f} %\n" \
+                        "DPT: {6:>6.1f} °C\n" \
+                        "h:   {7:>6.1f} kJ/kg\n" \
+                        "HR:  {8:<5.4f} kg/kg".format(
+            max_hr.name.strftime("%b %d %H:%M"),
+            max_hr.wind_speed,
+            max_hr.wind_direction,
+            max_hr.dry_bulb_temperature,
+            max_hr.wet_bulb_temperature,
+            max_hr.relative_humidity,
+            max_hr.dew_point_temperature,
+            max_hr.enthalpy / 1000,
+            max_hr.humidity_ratio
+        )
+        ax.text(0.17, 0.98, max_hr_table, transform=ax.transAxes, ha="left", va="top", zorder=8, fontsize=text_fontsize,
+                color="k", **{'fontname': 'monospace'})
+
+        ## Generate max enthalpy summary
+        max_enthalpy_table = "Peak enthalpy ratio {0:}\n" \
+                       "WS:  {1:>6.1f} m/s\n" \
+                       "WD:  {2:>6.1f} deg\n" \
+                       "DBT: {3:>6.1f} °C\n" \
+                       "WBT: {4:>6.1f} °C\n" \
+                       "RH:  {5:>6.1f} %\n" \
+                       "DPT: {6:>6.1f} °C\n" \
+                       "h:   {7:>6.1f} kJ/kg\n" \
+                       "HR:  {8:<5.4f} kg/kg".format(
+            max_enthalpy.name.strftime("%b %d %H:%M"),
+            max_enthalpy.wind_speed,
+            max_enthalpy.wind_direction,
+            max_enthalpy.dry_bulb_temperature,
+            max_enthalpy.wet_bulb_temperature,
+            max_enthalpy.relative_humidity,
+            max_enthalpy.dew_point_temperature,
+            max_enthalpy.enthalpy / 1000,
+            max_enthalpy.humidity_ratio
+        )
+        ax.text(0.17, 0.72, max_enthalpy_table, transform=ax.transAxes, ha="left", va="top", zorder=8,
+                fontsize=text_fontsize, color="k", **{'fontname': 'monospace'})
+
+        # Title formatting
+        ti = ax.set_title("{} - {} - {}".format(self.city, self.country, self.station_id),
+                          color="k", loc="left", fontsize="xx-large")
+
+        # text
+        keys = "WS: Wind speed | WD: Wind direction | DBT: Dry-bulb temperature | WBT: Wet-bulb temperature\nRH: Relative humidity | DPT: Dew-point temperature | h: Enthalpy | HR: Humidity ratio"
+        te = ax.text(0.5, -0.1, keys, transform=ax.transAxes, ha="center", va="top", zorder=8, fontsize="medium",
+                     color="k", **{'fontname': 'monospace'})
+
+        # Colorbar
+        cb = plt.colorbar(im, ax=ax, shrink=1, pad=0.071)
+        cb.ax.set_title('Hours', color="k")
+        cb.outline.set_visible(False)
+        plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='k')
+
+        plt.tight_layout()
+
+        # Save figure
+        if save:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False, bbox_extra_artists=[ti, te, ])
+            print("Psychrometric plot saved to {}".format(save_path))
+        if close:
+            plt.close()
+
+    # TODO: plot_wind_weibull, plot_utci_frequency, plot_utci_heatmap, psychrometrics

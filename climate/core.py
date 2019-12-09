@@ -2649,3 +2649,6 @@ class EPW(object):
         self.distances, self.indices = spatial.KDTree(self.reinhart_sky_dome["patch_centroids"]).query(self.vec, 3)
 
 
+
+
+

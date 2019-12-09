@@ -1,3 +1,4 @@
+scipy
 psychrolib
 pvlib
 matplotlib
