@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import pathlib
 from io import StringIO
-from climate.helpers import slugify, chunk, angle_between, renamer
+from climate.helpers import slugify, chunk, angle_between, renamer, unit_vector, wind_speed_at_height
 from pvlib.solarposition import get_solarposition
 from psychrolib import SetUnitSystem, SI, CalcPsychrometricsFromRelHum
 
@@ -116,8 +116,48 @@ class Weather(object):
         self.diffuse_sky_radiation_rose_values = None
         self.total_sky_radiation_rose_values = None
 
+        # NV method values
+        self.sky_emissivity = None
+        self.nv_sample_vectors = None
+        self.nv_sample_thetas = None
+        self.nv_sample_sky = None
+        self.convective_heat_transfer_coefficient = None
+
     # Methods below here for read/write
     def read(self, sun_position=False, psychrometrics=False, sky_matrix=False):
+        """
+        Read the EPW weather-file passed to the weather object, and populate a Pandas DataFrame with the hourly
+        variables.
+
+        Additional processing is possible using the flags provided.
+
+        Parameters
+        ----------
+        sun_position : bool
+            Calculate solar position variables (solar_apparent_zenith_angle, solar_zenith_angle,
+            solar_apparent_elevation_angle, solar_elevation_angle, solar_azimuth_angle, solar_equation_of_time).
+
+            *These calculations are dependant on the excellent **pvlib** package.*
+
+        psychrometrics : bool
+            Calculate derivable psychrometric variables (humidity_ratio, wet_bulb_temperature,
+            partial_vapour_pressure_moist_air, enthalpy, specific_volume_moist_air, degree_of_saturation).
+
+            *These calculations are dependant on the excellent **psychrolib** package.*
+
+        sky_matrix : bool
+            Calculate the sky-dome, with each patch corresponding to an annual hourly set of direct, diffuse and
+            total-radiation values.
+
+            *These calculations are dependant on the excellent **Radiance gendaymtx** program, available from
+            https://github.com/NREL/Radiance/releases/tag/5.2.*
+
+        Returns
+        -------
+        weather
+            A weather-object giving access to all the loaded and calculated data
+
+        """
         with open(self.file_path, "r") as f:
             dat = f.readlines()
 
@@ -227,6 +267,22 @@ class Weather(object):
         return self
 
     def to_csv(self, file_path=None):
+        """
+        Write the Pandas DataFrame containing hourly annual weather variables, and any calculated derived variables to
+        a CSV file.
+
+        Parameters
+        ----------
+        file_path : str
+            The file path into which the annual hourly values will be written. If no value is passed, the output
+            will be written to the same directory as the input weather-file.
+
+        Returns
+        -------
+        str
+            Path to the serialised CSV file.
+
+        """
         if self.df is None:
             raise Exception('No data is available, try loading some first!')
         if file_path is None:
@@ -237,6 +293,22 @@ class Weather(object):
         return self.csv_file
 
     def to_wea(self, file_path=None):
+        """
+        Create a WEA file capable of being passed to Radiance programs from the global, direct and diffuse annual hourly
+         radiation values available.
+
+        Parameters
+        ----------
+        file_path : str
+            The file path into which the WEA formatted radiation values will be written. If no value is passed, the
+            output will be written to the same directory as the input weather-file.
+
+        Returns
+        -------
+        str
+            Path to the serialised WEA file.
+
+        """
         if (self.direct_normal_radiation is None) | (self.diffuse_horizontal_radiation is None):
             raise Exception('No radiation data is available, try loading some first!')
         if file_path is None:
@@ -254,6 +326,19 @@ class Weather(object):
     # Methods below here for derived psychrometrics/solar positioning
 
     def sun_position(self):
+        """
+        Calculate the solar position based on the latitude, longitude and time-zone of the loaded weather data.
+
+        *These calculations are dependant on the excellent **pvlib** package.*
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        self
+
+        """
         solar_metrics = get_solarposition(self.index, self.latitude, self.longitude)
         solar_metrics.rename(columns={
             'apparent_zenith': 'solar_apparent_zenith_angle',
@@ -274,6 +359,20 @@ class Weather(object):
         return self
 
     def psychrometrics(self):
+        """
+        Calculate a range of derivable air/water characteristics from the annual hourly dry_bulb_temperature,
+        relative_humidity and atmospheric_station_pressure for the loaded weather data.
+
+        *These calculations are dependant on the excellent **psychrolib** package.*
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        self
+
+        """
         SetUnitSystem(SI)
         psych_metrics = self.df.apply(lambda row: CalcPsychrometricsFromRelHum(row.dry_bulb_temperature, row.relative_humidity/100, row.atmospheric_station_pressure), axis=1).apply(pd.Series)
         psych_metrics.columns = ["humidity_ratio", "wet_bulb_temperature", "dew_point_temperature", "partial_vapour_pressure_moist_air", "enthalpy", "specific_volume_moist_air", "degree_of_saturation", ]
@@ -288,24 +387,52 @@ class Weather(object):
         print("Psychrometric calculations successful")
         return self
 
-    def gendaymtx(self, direct=True):
+    # Methods below here for sky-dome calculation
+    
+    def gendaymtx(self, wea_file=None, direct=True, reinhart=False):
+        """
+        Run the Radiance Gendaymtx program from an input WEA file.
+
+        *These calculations are dependant on the excellent **Radiance gendaymtx** program, which is expected to be
+        located in either "C:/Radiance/bin/gendaymtx" or "/usr/local/radiance/bin/gendaymtx"*
+
+        Parameters
+        ----------
+        direct : bool
+            True: Direct-radiation only, False: Diffuse-radiation only
+
+        reinhart : bool
+            True: Create a sky-matrix with 577 patches, False: Create a sky-matrix with 146 patches
+
+        Returns
+        -------
+        sky_matrix : np.array
+            A Numpy matrix of shape 8760*n, corresponding to each hour of the year, and each patch value
+
+        """
+
+        # Check if a wea_file has been passed
+        if wea_file is None:
+            wea_file = self.wea_file
+        else:
+            pass
 
         # Create output file path
         if direct:
-            mtx_file = pathlib.Path(self.wea_file).with_suffix(".dirmtx")
+            mtx_file = pathlib.Path(wea_file).with_suffix(".dirmtx")
         else:
-            mtx_file = pathlib.Path(self.wea_file).with_suffix(".diffmtx")
+            mtx_file = pathlib.Path(wea_file).with_suffix(".diffmtx")
 
         # Create run command
         if platform.system() != "Windows":
-            cmd = '"/usr/local/radiance/bin/gendaymtx" -m {0:} -{1:} -O1 "{2:}" > "{3:}"'.format(2 if self.reinhart else 1,
+            cmd = '"/usr/local/radiance/bin/gendaymtx" -m {0:} -{1:} -O1 "{2:}" > "{3:}"'.format(2 if reinhart else 1,
                                                                                                  "d" if direct else "s",
-                                                                                                 self.wea_file,
+                                                                                                 wea_file,
                                                                                                  mtx_file)
         else:
-            cmd = '"C:/Radiance/bin/gendaymtx" -m {0:} -{1:} -O1 "{2:}" > "{3:}"'.format(2 if self.reinhart else 1,
+            cmd = '"C:/Radiance/bin/gendaymtx" -m {0:} -{1:} -O1 "{2:}" > "{3:}"'.format(2 if reinhart else 1,
                                                                                          "d" if direct else "s",
-                                                                                         self.wea_file, mtx_file)
+                                                                                         wea_file, mtx_file)
 
         # Run command
         subprocess.run(cmd, shell=True)
@@ -318,9 +445,24 @@ class Weather(object):
 
         return sky_matrix
 
-    # Methods below here for sky-dome calculation
-
     def sky_matrix(self, reinhart=False):
+        """
+        Create a sky-matrix for the given weather file.
+
+        *These calculations are dependant on the excellent **Radiance gendaymtx** program, which is expected to be
+        located in either "C:/Radiance/bin/gendaymtx" or "/usr/local/radiance/bin/gendaymtx"*
+
+        Parameters
+        ----------
+        reinhart : bool
+            True: Create a sky-matrix with 577 patches, False: Create a sky-matrix with 146 patches
+
+        Returns
+        -------
+        sky_matrix : np.array
+            A Numpy matrix of shape 8760*n, corresponding to each hour of the year, and each patch value
+
+        """
         # Check if wea-file exists
         if self.wea_file is None:
             self.to_wea()
@@ -2459,9 +2601,9 @@ class Weather(object):
         ])
         self.radiation_rose_angles = np.radians(np.arange(0, 360, 10))[::-1]
         # Migrate the sky dome stuff up here - methods to add next
-        self.direct_sky_matrix = self.gendaymtx(direct=True)
+        self.direct_sky_matrix = self.gendaymtx(direct=True, reinhart=reinhart)
         print("Direct sky matrix calculated: {0:}".format(pathlib.Path(self.wea_file).with_suffix(".dirmtx")))
-        self.diffuse_sky_matrix = self.gendaymtx(direct=False)
+        self.diffuse_sky_matrix = self.gendaymtx(direct=False, reinhart=reinhart)
         print("Diffuse sky matrix calculated: {0:}".format(pathlib.Path(self.wea_file).with_suffix(".diffmtx")))
         self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
 
@@ -2469,8 +2611,68 @@ class Weather(object):
 
     # Methods below here for NV method
 
-    
+    def generate_numerous_vectors(self, n_samples=100):
+        # Returns vec, alt, sky
+        vectors = []
+        thetas = []
+        sky = []
+        offset = 2 / n_samples
+        increment = np.pi * (3 - np.sqrt(5))
+        for i in range(n_samples):
+            y = ((i * offset) - 1) + (offset / 2)
+            r = np.sqrt(1 - np.power(y, 2))
+            phi = i * increment
+            x = np.cos(phi) * r
+            z = np.sin(phi) * r
+            theta = np.arctan(z / np.sqrt(np.power(x, 2) + np.power(y, 2)))
+            theta = np.fabs(theta)
+            thetas.append(theta)
+            vec = unit_vector([x, y, z])
+            vectors.append(vec)
+            if z > 0:
+                sky.append(True)
+            else:
+                sky.append(False)
+        self.nv_sample_vectors = np.array(vectors)
+        self.nv_sample_thetas = np.array(thetas)
+        self.nv_sample_sky = np.array(sky)
+        return self
 
+    def calculate_sky_emissivity(self):
+        dpt = self.dew_point_temperature + 273.15
+        tsc = self.total_sky_cover / 10
+        self.sky_emissivity = (0.787 + 0.764 * np.log(dpt / 273.15)) * (1 + 0.0224 * tsc - 0.0035 * np.power(tsc, 2) + 0.0028 * np.power(tsc, 3))
+        self.df = pd.concat([self.df, self.sky_emissivity], axis=1)
+        return self
+
+    def calculate_horizontal_ir(self):
+        if self.horizontal_infrared_radiation_intensity is None:
+            stefan_boltzmann_constant = 5.6697E-8
+            dbt = self.dry_bulb_temperature + 273.15
+            self.horizontal_infrared_radiation_intensity = self.sky_emissivity * stefan_boltzmann_constant * np.power(dbt, 4)
+            self.df = pd.concat([self.df, self.horizontal_infrared_radiation_intensity], axis=1)
+        return self
+
+    def calculate_pedestrian_wind_speed(self):
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+        self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
+        return self
+
+    def calculate_convective_heat_transfer_coefficient(self, roughness="Concrete (Medium Rough)"):
+        material = {
+            "Stucco (Very Rough)": {"D": 11.58, "E": 5.89, "F": 0},
+            "Brick (Rough)": {"D": 12.49, "E": 4.065, "F": 0.028},
+            'Concrete (Medium Rough)': {"D": 10.79, "E": 4.192, "F": 0},
+            'Clear pine (Medium Smooth)': {"D": 8.23, "E": 4, "F": -0.057},
+            'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
+            'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
+        }
+        ws = self.pedestrian_wind_speed
+        self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + material[roughness]["F"] * np.power(ws, 2)
+        return self
+
+
+    
     # Methods below here are for plotting only
 
     def plot_heatmap(self, variable, cmap='Greys', close=True, save=False):
