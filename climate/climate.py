@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import pathlib
 from io import StringIO
-from climate.helpers import slugify, chunk, angle_between, renamer, unit_vector, wind_speed_at_height
+from climate.helpers import slugify, chunk, angle_between, renamer, unit_vector, wind_speed_at_height, ground_temperature_at_depth
 from pvlib.solarposition import get_solarposition
 from psychrolib import SetUnitSystem, SI, CalcPsychrometricsFromRelHum, GetHumRatioFromRelHum, \
     GetTDryBulbFromEnthalpyAndHumRatio
@@ -127,11 +127,12 @@ class Weather(object):
         self.nv_sample_indices = None
         self.nv_radiation = None
         self.nv_sun_view_factor = None
+        self.nv_ground_temperature = None
         self.nv_m2_radiation = None
         self.nv_last_ray_bounce_vector = None
         self.nv_intersected_points = None
-        self.Ein = None
-        self.Eout = None
+        self.nv_ein = None
+        self.nv_eout = None
 
     # Methods below here for read/write
     def read(self, sun_position=False, psychrometrics=False, sky_matrix=False):
@@ -2685,10 +2686,24 @@ class Weather(object):
         return self
 
     def calculate_pedestrian_wind_speed(self):
-        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index,
-                                               data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in
+        self.nv_pedestrian_wind_speed = pd.Series(name="nv_pedestrian_wind_speed", index=self.index,
+                                                  data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in
                                                      self.wind_speed])
-        self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
+        # self.df = pd.concat([self.df, self.nv_pedestrian_wind_speed], axis=1)
+        return self
+
+    def calculate_ground_temperature(self):
+        depth = 0.5
+        mn = self.dry_bulb_temperature.mean()
+        rng = self.dry_bulb_temperature.max() - self.dry_bulb_temperature.min()
+        coldest_day = self.dry_bulb_temperature.resample("1D").mean().idxmin()
+
+        gndts = []
+        for j in [i if i > 0 else i + 365 for i in (self.df.index - coldest_day).total_seconds() / 86400]:
+            gndts.append(ground_temperature_at_depth(depth, mn, rng, j, soil_diffusivity=0.01))
+        self.nv_ground_temperature = pd.Series(name="nv_ground_temperature_at_depth", index=self.index, data=gndts)
+        # self.df = pd.concat([self.df, self.ground_temperature_at_depth], axis=1)
+
         return self
 
     def calculate_convective_heat_transfer_coefficient(self, roughness="Concrete (Medium Rough)"):
@@ -2700,7 +2715,7 @@ class Weather(object):
             'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
             'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
         }
-        ws = self.pedestrian_wind_speed
+        ws = self.nv_pedestrian_wind_speed
         self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + \
                                                     material[roughness]["F"] * np.power(ws, 2)
         return self
@@ -3128,7 +3143,7 @@ class Weather(object):
         return self
 
     def calculate_ein(self):
-        self.Ein = self.nv_sun_view_factor * self.nv_radiation
+        self.nv_ein = self.nv_sun_view_factor * self.nv_radiation
         return self
 
     def calculate_ein_out(self):
@@ -3136,7 +3151,7 @@ class Weather(object):
         dists, LenInt = spatial.KDTree(self.nv_sample_vectors).query(self.nv_last_ray_bounce_vector, 1)
         albedo = 0.2
 
-        self.Eout = (np.power(albedo, LenInt) * self.Ein * 1000).sum(axis=1)
+        self.nv_eout = (np.power(albedo, LenInt) * self.nv_ein * 1000).sum(axis=1)
 
         return self
 
@@ -3618,4 +3633,4 @@ class Weather(object):
         if close:
             plt.close()
 
-    # TODO: plot_wind_weibull, plot_utci_frequency, plot_utci_heatmap, psychrometrics
+    # TODO: plot_wind_weibull, plot_utci_frequency, plot_utci_heatmap
