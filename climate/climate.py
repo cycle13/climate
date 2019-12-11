@@ -78,6 +78,9 @@ class Weather(object):
         self.albedo = None
         self.liquid_precipitation_depth = None
         self.liquid_precipitation_quantity = None
+        self.ground_temperature_1 = None
+        self.ground_temperature_2 = None
+        self.ground_temperature_3 = None
 
         # Path variables
         self.wea_file = None
@@ -267,6 +270,20 @@ class Weather(object):
         self.albedo = df.albedo
         self.liquid_precipitation_depth = df.liquid_precipitation_depth
         self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
+
+        # Get the ground temperatures from the EPW file per month
+        g_temps = {}
+        for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], 16))):
+            g_temps[float(n)] = [float(j) for j in i[4:]]
+        aa = pd.DataFrame.from_dict(g_temps)
+        aa.index = pd.date_range("2018-01-01 00:00:00", "2019-01-01 00:00:00", closed="left", freq="MS")
+        aa = pd.concat([pd.DataFrame(index=pd.date_range("2018-01-01", "2019-01-01", closed="left", freq="60T")), aa],
+                       axis=1).ffill().bfill()
+        aa.columns = ["ground_temperature_0.5m", "ground_temperature_2m", "ground_temperature_4m"]
+        self.ground_temperature_1 = aa["ground_temperature_0.5m"]
+        self.ground_temperature_2 = aa["ground_temperature_2m"]
+        self.ground_temperature_3 = aa["ground_temperature_4m"]
+        self.df = pd.concat([self.df, aa], axis=1)
 
         # Run the optional calculations
         if sun_position:
