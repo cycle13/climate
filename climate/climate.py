@@ -271,13 +271,13 @@ class Weather(object):
         self.liquid_precipitation_depth = df.liquid_precipitation_depth
         self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
 
-        # Get the ground temperatures from the EPW file per month
+        # Get the ground temperatures from the EPW file per month TODO: Fix this dodgy method please!
         g_temps = {}
         for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], 16))):
             g_temps[float(n)] = [float(j) for j in i[4:]]
         aa = pd.DataFrame.from_dict(g_temps)
-        aa.index = pd.date_range("2018-01-01 00:00:00", "2019-01-01 00:00:00", closed="left", freq="MS")
-        aa = pd.concat([pd.DataFrame(index=pd.date_range("2018-01-01", "2019-01-01", closed="left", freq="60T")), aa],
+        aa.index = pd.date_range("2018-01-01 00:00:00", "2019-01-01 00:00:00", closed="left", freq="MS").tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))
+        aa = pd.concat([pd.DataFrame(index=pd.date_range("2018-01-01", "2019-01-01", closed="left", freq="60T").tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))), aa],
                        axis=1).ffill().bfill()
         aa.columns = ["ground_temperature_0.5m", "ground_temperature_2m", "ground_temperature_4m"]
         self.ground_temperature_1 = aa["ground_temperature_0.5m"]
@@ -3160,7 +3160,10 @@ class Weather(object):
         return self
 
     def calculate_ein(self):
-        self.nv_ein = self.nv_sun_view_factor * self.nv_radiation
+        from scipy import spatial
+        _, inds = spatial.KDTree(self.nv_sample_vectors).query(self.nv_last_ray_bounce_vector, 1)
+
+        self.nv_ein = (self.nv_sun_view_factor[inds] * self.nv_radiation[:, inds])
         return self
 
     def calculate_ein_out(self):

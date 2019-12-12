@@ -135,6 +135,7 @@ def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_
 
 
 def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
+
     roughness = {
         0: 0.0002,  # Water surfaces: seas and Lakes
         0.2: 0.0005,  # Inlet water
