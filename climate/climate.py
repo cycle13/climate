@@ -123,6 +123,14 @@ class Weather(object):
         # NV method values
         self.sky_emissivity = None
         self.convective_heat_transfer_coefficient = None
+        self.ground_temperature = None
+        self.ground_convective_heat_transfer_coefficient = None
+        self.ground_k_value = None
+        self.ground_emissivity = None
+        self.ground_absorptivity = None
+        self.ground_thickness = None
+        self.ground_surface_temperature = None
+
         self.nv_sample_vectors = None
         self.nv_sample_thetas = None
         self.nv_sample_sky = None
@@ -138,7 +146,7 @@ class Weather(object):
         self.nv_eout = None
 
     # Methods below here for read/write
-    def read(self, sun_position=False, psychrometrics=False, sky_matrix=False):
+    def read(self, sun_position=False, psychrometrics=False, sky_matrix=False, openfield_mrt=False):
         """
         Read the EPW weather-file passed to the weather object, and populate a Pandas DataFrame with the hourly
         variables.
@@ -292,6 +300,10 @@ class Weather(object):
             self.psychrometrics()
         if sky_matrix:
             self.sky_matrix(reinhart=True)
+        if openfield_mrt:
+            if self.total_sky_matrix is None:
+                self.sky_matrix(reinhart=True)
+            self.openfield_mrt()
 
         return self
 
@@ -2651,11 +2663,49 @@ class Weather(object):
 
         return self
 
+    def openfield_mrt(self):
+
+        # Calculate wind speed at pedestrian height
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index,
+                                               data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+
+        # Calculate sky emissivity
+        self.sky_emissivity = (0.787 + 0.764 * np.log((self.dew_point_temperature + 273.15) / 273.15)) * (1 + 0.0224 * (self.total_sky_cover / 10) - 0.0035 * np.power((self.total_sky_cover / 10), 2) + 0.0028 * np.power((self.total_sky_cover / 10), 3))
+
+        # Set basic ground properties
+        ## Ground temperatures from self.ground_temperature1
+
+        material = {
+            "Stucco (Very Rough)": {"D": 11.58, "E": 5.89, "F": 0},
+            "Brick (Rough)": {"D": 12.49, "E": 4.065, "F": 0.028},
+            'Concrete (Medium Rough)': {"D": 10.79, "E": 4.192, "F": 0},
+            'Clear pine (Medium Smooth)': {"D": 8.23, "E": 4, "F": -0.057},
+            'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
+            'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
+        }
+        mt = "Concrete (Medium Rough)"
+
+        self.convective_heat_transfer_coefficient = material[mt]["D"] + material[mt]["E"] * self.pedestrian_wind_speed + \
+                                                    material[mt]["F"] * np.power(self.pedestrian_wind_speed, 2)
+
+        self.ground_k_value = np.interp(np.power(self.relative_humidity, 3), [0, 1e6], [0.33, 1.4])
+        self.ground_emissivity = 0.8
+        self.ground_absorptivity = 0.6
+        self.ground_thickness = 1
+
+        # CReate a set of 1000 sample points for the sky dome
+
+
+        self.ground_surface_temperature = None
+
+        return self
+
+
     # Methods below here for NV method
 
-    def closest_point(source_points, target_points, n_return=1):
+    def closest_point(source_points, target_points, n_closest=1):
         from scipy import spatial
-        dists, inds = spatial.KDTree(target_points).query(source_points, n_return)
+        dists, inds = spatial.KDTree(target_points).query(source_points, n_closest)
         return dists, inds
 
     def generate_numerous_vectors(self, n_samples=1000):
@@ -2703,10 +2753,10 @@ class Weather(object):
         return self
 
     def calculate_pedestrian_wind_speed(self):
-        self.nv_pedestrian_wind_speed = pd.Series(name="nv_pedestrian_wind_speed", index=self.index,
-                                                  data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index,
+                                               data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in
                                                      self.wind_speed])
-        # self.df = pd.concat([self.df, self.nv_pedestrian_wind_speed], axis=1)
+        # self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
         return self
 
     def calculate_ground_temperature(self):
@@ -2732,7 +2782,7 @@ class Weather(object):
             'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
             'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
         }
-        ws = self.nv_pedestrian_wind_speed
+        ws = self.pedestrian_wind_speed
         self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + \
                                                     material[roughness]["F"] * np.power(ws, 2)
         return self

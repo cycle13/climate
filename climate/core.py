@@ -2590,7 +2590,7 @@ class EPW(object):
     # NV method stuff
 
     def gen_pedestrian_wind_speed(self):
-        self.pedestrian_wind_speed = pd.Series(name="nv_pedestrian_wind_speed", index=self.df.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.df.index, data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
         print("Pedestrian wind-speed calculated")
         self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
 

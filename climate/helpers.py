@@ -2,11 +2,23 @@ import os
 import math
 import re
 import numpy as np
+from scipy import spatial
 
 
 ##########################
 # Generic helper methods #
 ##########################
+
+def closest_point(source_points, target_points, n_closest=1):
+    """
+    Find the closest n points from a set of source points to a set of target points
+    :param source_points:
+    :param target_points:
+    :param n_closest:
+    :return:
+    """
+    target_distances, target_indices = spatial.KDTree(target_points).query(source_points, n_closest)
+    return target_distances, target_indices
 
 def is_mac():
     if os.name == "posix":
