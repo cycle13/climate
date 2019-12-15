@@ -2675,15 +2675,16 @@ class Weather(object):
         # Set basic ground properties
         ## Ground temperatures from self.ground_temperature1
 
+        # The roughness correlation is taken from Figure 1, Page 22.4, ASHRAE Handbook of Fundamentals (ASHRAE 1989)
         material = {
-            "Stucco (Very Rough)": {"D": 11.58, "E": 5.89, "F": 0},
-            "Brick (Rough)": {"D": 12.49, "E": 4.065, "F": 0.028},
-            'Concrete (Medium Rough)': {"D": 10.79, "E": 4.192, "F": 0},
-            'Clear pine (Medium Smooth)': {"D": 8.23, "E": 4, "F": -0.057},
-            'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
-            'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
+            "Very rough": {"D": 11.58, "E": 5.89, "F": 0},
+            "Rough": {"D": 12.49, "E": 4.065, "F": 0.028},
+            'Medium rough': {"D": 10.79, "E": 4.192, "F": 0},
+            'Medium smooth': {"D": 8.23, "E": 4, "F": -0.057},
+            'Smooth': {"D": 10.22, "E": 3.1, "F": 0},
+            'Very smooth': {"D": 8.23, "E": 3.33, "F": -0.036},
         }
-        mt = "Concrete (Medium Rough)"
+        mt = "Medium rough"
 
         self.convective_heat_transfer_coefficient = material[mt]["D"] + material[mt]["E"] * self.pedestrian_wind_speed + \
                                                     material[mt]["F"] * np.power(self.pedestrian_wind_speed, 2)
