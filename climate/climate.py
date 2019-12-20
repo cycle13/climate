@@ -3379,7 +3379,9 @@ class Weather(object):
         return self
 
     # TODO: Add comfort metrics into the mix here!
-    
+
+
+
     # Methods below here are for plotting only
 
     def plot_heatmap(self, variable, cmap='Greys', close=True, save=False):
