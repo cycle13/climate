@@ -146,26 +146,39 @@ def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_
     return np.array(rose_vector_result)
 
 
-def wind_speed_at_height(ws, h1, h2, rc=0, log=True):
+def wind_speed_at_height(source_wind_speed, source_wind_height, target_wind_height, terrain_roughness="Airport runway areas", log_method=True):
+    """
 
+    :param source_wind_speed: The wind speed to be translated (m/s)
+    :param source_wind_height: The height at which the source wind speed was measured
+    :param target_wind_height: The height to which the source wind speed will be translated
+    :param terrain_roughness: A terrain roughness value from the European Wind Atlas, page 58, Figure 3.1: Roughness length, surface characteristics and roughness class.
+    :param log_method:
+    :return:
+    """
     roughness = {
-        0: 0.0002,  # Water surfaces: seas and Lakes
-        0.2: 0.0005,  # Inlet water
-        0.5: 0.0024,  # Open terrain with smooth surface, e.g. concrete, airport runways, mown grass etc.
-        1: 0.03,  # Open agricultural land without fences and hedges; very gentle hills and the odd farmhouse
-        1.5: 0.055,  # Agricultural land with a few buildings and 8 m high hedges separated by more than 1 km
-        2: 0.1,  # Agricultural land with a few buildings and 8 m high hedges separated by approx. 500 m
-        2.5: 0.2,  # Agricultural land with many trees, bushes and plants, or 8 m high hedges separated by approx. 250 m
-        3: 0.4,  # Towns or villages with many or high hedges, forests and very rough and uneven terrain
-        3.5: 0.6,  # Large towns with high buildings
-        4: 1.6  # Large cities with high buildings and skyscrapers
+        "City": 1,
+        "Forest": 0.8,
+        "Suburbs": 0.5,
+        "Shelter belts": 0.3,
+        "Many trees and/or bushes": 0.2,
+        "Farmland with closed appearance": 0.1,
+        "Farmland with open appearance": 0.05,
+        "Farmland with very few buildings, trees etc. airport areas with buildings and trees": 0.03,
+        "Airport runway areas": 0.01,
+        "Mown grass": 0.0075,
+        "Bare soil (smooth)": 0.005,
+        "Snow surfaces (smooth)": 0.001,
+        "Sand surfaces (smooth)": 0.0003,
+        "Water areas (lakes, fjords, open sea)": 0.0001
     }
-    if ws == 0:
+
+    if source_wind_speed == 0:
         return 0
-    if log:
-        return ws * (math.log(h2 / roughness[rc]) / math.log(h1 / roughness[rc]))
+    if log_method:
+        return source_wind_speed * (math.log(target_wind_height / roughness[terrain_roughness]) / math.log(source_wind_height / roughness[terrain_roughness]))
     wind_shear_exponent = 1 / 7
-    return ws * ((h2 / h1) ** wind_shear_exponent)
+    return source_wind_speed * ((target_wind_height / source_wind_height) ** wind_shear_exponent)
 
 
 def ground_temperature_at_depth(depth, annual_average_temperature, annual_temperature_range, days_since_coldest_day, soil_diffusivity=0.01):
@@ -296,12 +309,12 @@ def thing1(Tin, Ta, emissivity, k, tickness, hc, Ein, absorptivity):
     A = heat transfer area of the surface (m2)
     hc= convective heat transfer coefficient of the process (W/(m2K) or W/(m2oC))
     dT = temperature difference between the surface and the bulk fluid (K or oC)
-    
+
     Heat Transfer Coefficients - Units
         1 W/(m2K) = 0.85984 kcal/(h m2 oC) = 0.1761 Btu/(ft2 h oF)
         1 Btu/(ft2 h oF) = 5.678 W/(m2 K) = 4.882 kcal/(h m2 oC)
         1 kcal/(h m2 oC) = 1.163 W/(m2K) = 0.205 Btu/(ft2 h oF)
-    
+
     http://www.engineersedge.com/heat_transfer/convection_heat_transfer.htm
     """
 

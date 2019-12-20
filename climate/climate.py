@@ -8,7 +8,10 @@ from io import StringIO
 from climate.helpers import slugify, chunk, angle_between, renamer, unit_vector, wind_speed_at_height, ground_temperature_at_depth
 from pvlib.solarposition import get_solarposition
 from psychrolib import SetUnitSystem, SI, CalcPsychrometricsFromRelHum, GetHumRatioFromRelHum, \
-    GetTDryBulbFromEnthalpyAndHumRatio
+    GetTDryBulbFromEnthalpyAndHumRatio, GetTWetBulbFromHumRatio, GetVapPresFromHumRatio, GetMoistAirEnthalpy, \
+    GetMoistAirVolume, GetDegreeOfSaturation
+from scipy import spatial
+from scipy.interpolate import bisplev
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -121,32 +124,22 @@ class Weather(object):
         self.total_sky_radiation_rose_values = None
 
         # NV method values
-        self.sky_emissivity = None
-        self.convective_heat_transfer_coefficient = None
-        self.ground_temperature = None
-        self.ground_convective_heat_transfer_coefficient = None
-        self.ground_k_value = None
-        self.ground_emissivity = None
-        self.ground_absorptivity = None
-        self.ground_thickness = None
-        self.ground_surface_temperature = None
+        # self.sky_emissivity = None
+        # self.convective_heat_transfer_coefficient = None
+        # self.ground_temperature = None
+        # self.ground_convective_heat_transfer_coefficient = None
+        # self.ground_k_value = None
+        # self.ground_emissivity = None
+        # self.ground_absorptivity = None
+        # self.ground_thickness = None
+        # self.ground_surface_temperature = None
 
         self.nv_sample_vectors = None
-        self.nv_sample_thetas = None
-        self.nv_sample_sky = None
-        self.nv_sample_distances = None
-        self.nv_sample_indices = None
-        self.nv_radiation = None
-        self.nv_sun_view_factor = None
-        self.nv_ground_temperature = None
-        self.nv_m2_radiation = None
-        self.nv_last_ray_bounce_vector = None
-        self.nv_intersected_points = None
-        self.nv_ein = None
-        self.nv_eout = None
+        self.mean_radiant_temperature_nv = None
+        self.mean_radiant_temperature_sa = None
 
     # Methods below here for read/write
-    def read(self, sun_position=False, psychrometrics=False, sky_matrix=False, openfield_mrt=False):
+    def read(self, sun_position=False, psychrometrics=False, sky_matrix=False, openfield_mrt=False, sa_mrt=False):
         """
         Read the EPW weather-file passed to the weather object, and populate a Pandas DataFrame with the hourly
         variables.
@@ -240,7 +233,7 @@ class Weather(object):
         ]
 
         # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
-        self.index = self.index.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))
+        self.index = self.index.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
         df.index = self.index
 
         # Drop date/time columns
@@ -279,19 +272,20 @@ class Weather(object):
         self.liquid_precipitation_depth = df.liquid_precipitation_depth
         self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
 
-        # Get the ground temperatures from the EPW file per month TODO: Fix this dodgy method please!
+        # Get the ground temperatures from the EPW file per month
         g_temps = {}
         for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], 16))):
             g_temps[float(n)] = [float(j) for j in i[4:]]
-        aa = pd.DataFrame.from_dict(g_temps)
-        aa.index = pd.date_range("2018-01-01 00:00:00", "2019-01-01 00:00:00", closed="left", freq="MS").tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))
-        aa = pd.concat([pd.DataFrame(index=pd.date_range("2018-01-01", "2019-01-01", closed="left", freq="60T").tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60))), aa],
-                       axis=1).ffill().bfill()
-        aa.columns = ["ground_temperature_0.5m", "ground_temperature_2m", "ground_temperature_4m"]
-        self.ground_temperature_1 = aa["ground_temperature_0.5m"]
-        self.ground_temperature_2 = aa["ground_temperature_2m"]
-        self.ground_temperature_3 = aa["ground_temperature_4m"]
-        self.df = pd.concat([self.df, aa], axis=1)
+        temp_ground_temperature = pd.DataFrame.from_dict(g_temps)
+        temp_ground_temperature.index = pd.Series(index=self.index).resample("MS").mean().index
+        temp_ground_temperature = pd.concat([pd.DataFrame(index=self.index), temp_ground_temperature], axis=1)
+        temp_ground_temperature.columns = ["ground_temperature_0.5m", "ground_temperature_2m", "ground_temperature_4m"]
+        temp_ground_temperature.iloc[-1, :] = temp_ground_temperature.iloc[0, :]  # Assign start temperature to last datetime
+        temp_ground_temperature.interpolate(inplace=True)  # Fill in the gaps
+        self.ground_temperature_1 = temp_ground_temperature["ground_temperature_0.5m"]
+        self.ground_temperature_2 = temp_ground_temperature["ground_temperature_2m"]
+        self.ground_temperature_3 = temp_ground_temperature["ground_temperature_4m"]
+        self.df = pd.concat([self.df, temp_ground_temperature], axis=1)
 
         # Run the optional calculations
         if sun_position:
@@ -304,6 +298,8 @@ class Weather(object):
             if self.total_sky_matrix is None:
                 self.sky_matrix(reinhart=True)
             self.openfield_mrt()
+        if sa_mrt:
+            self.solar_adjusted_mrt()
 
         return self
 
@@ -419,25 +415,33 @@ class Weather(object):
 
         """
         SetUnitSystem(SI)
-        psych_metrics = self.df.apply(
-            lambda row: CalcPsychrometricsFromRelHum(row.dry_bulb_temperature, row.relative_humidity / 100,
-                                                     row.atmospheric_station_pressure), axis=1).apply(pd.Series)
-        psych_metrics.columns = ["humidity_ratio", "wet_bulb_temperature", "dew_point_temperature",
-                                 "partial_vapour_pressure_moist_air", "enthalpy", "specific_volume_moist_air",
-                                 "degree_of_saturation", ]
-        # Remove dew_point_temperature if it already exists in the weather file
-        if self.dew_point_temperature is None:
-            self.dew_point_temperature = psych_metrics.dew_point_temperature
-        else:
-            psych_metrics.drop(columns=["dew_point_temperature"], inplace=True)
 
-        self.humidity_ratio = psych_metrics.humidity_ratio
-        self.wet_bulb_temperature = psych_metrics.wet_bulb_temperature
-        self.partial_vapour_pressure_moist_air = psych_metrics.partial_vapour_pressure_moist_air
-        self.enthalpy = psych_metrics.enthalpy
-        self.specific_volume_moist_air = psych_metrics.specific_volume_moist_air
-        self.degree_of_saturation = psych_metrics.degree_of_saturation
-        self.df = pd.concat([self.df, psych_metrics], axis=1)
+        def humidity_ratio_from_relative_humidity(input):
+            return GetHumRatioFromRelHum(input[0], input[1], input[2])
+        self.humidity_ratio = pd.Series(index=self.index, name="humidity_ratio", data=np.apply_along_axis(humidity_ratio_from_relative_humidity, 0, np.array([self.dry_bulb_temperature.values, self.relative_humidity.values / 100, self.atmospheric_station_pressure.values])))
+
+        def wet_bulb_temperature_from_humidity_ratio(input):
+            return GetTWetBulbFromHumRatio(input[0], input[1], input[2])
+        self.wet_bulb_temperature = pd.Series(index=self.index, name="wet_bulb_temperature", data=np.apply_along_axis(wet_bulb_temperature_from_humidity_ratio, 0, np.array([self.dry_bulb_temperature.values, self.humidity_ratio.values, self.atmospheric_station_pressure.values])))
+
+        def vapour_pressure_from_humidity_ratio(input):
+            return GetVapPresFromHumRatio(input[0], input[1])
+        self.partial_vapour_pressure_moist_air = pd.Series(index=self.index, name="partial_vapour_pressure_moist_air", data=np.apply_along_axis(vapour_pressure_from_humidity_ratio, 0, np.array([self.humidity_ratio, self.atmospheric_station_pressure.values])))
+
+        def enthalpy_from_humidity_ratio(input):
+            return GetMoistAirEnthalpy(input[0], input[1])
+        self.enthalpy = pd.Series(index=self.index, name="enthalpy", data=np.apply_along_axis(enthalpy_from_humidity_ratio, 0, np.array([self.dry_bulb_temperature.values, self.humidity_ratio.values])))
+
+        def specific_volume_moist_air_from_humidity_ratio(input):
+            return GetMoistAirVolume(input[0], input[1], input[2])
+        self.specific_volume_moist_air = pd.Series(index=self.index, name="specific_volume_moist_air", data=np.apply_along_axis(specific_volume_moist_air_from_humidity_ratio, 0, np.array([self.dry_bulb_temperature.values, self.humidity_ratio.values, self.atmospheric_station_pressure.values])))
+
+        def degree_of_saturation_from_humidity_ratio(input):
+            return GetDegreeOfSaturation(input[0], input[1], input[2])
+        self.degree_of_saturation = pd.Series(index=self.index, name="degree_of_saturation", data=np.apply_along_axis(degree_of_saturation_from_humidity_ratio, 0, np.array([self.dry_bulb_temperature.values, self.humidity_ratio.values, self.atmospheric_station_pressure.values])))
+
+        # Append to DataFrame
+        self.df = pd.concat([self.df, self.humidity_ratio, self.wet_bulb_temperature, self.partial_vapour_pressure_moist_air, self.enthalpy, self.specific_volume_moist_air, self.degree_of_saturation], axis=1)
         print("Psychrometric calculations successful")
         return self
 
@@ -2663,19 +2667,24 @@ class Weather(object):
 
         return self
 
-    def openfield_mrt(self):
+    def openfield_mrt(self, pedestrian_height=1.5, ground_roughness="Medium rough", ground_emissivity=0.8, ground_absorptivity=0.6, ground_thickness=1):
 
-        # Calculate wind speed at pedestrian height
-        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index,
-                                               data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in self.wind_speed])
+        sigma = 5.670374419e-8
 
-        # Calculate sky emissivity
-        self.sky_emissivity = (0.787 + 0.764 * np.log((self.dew_point_temperature + 273.15) / 273.15)) * (1 + 0.0224 * (self.total_sky_cover / 10) - 0.0035 * np.power((self.total_sky_cover / 10), 2) + 0.0028 * np.power((self.total_sky_cover / 10), 3))
+        # Calculate pedestrian wind speed
+        pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index, data=[
+            wind_speed_at_height(source_wind_speed=i, source_wind_height=10, target_wind_height=pedestrian_height) for i
+            in self.wind_speed])
 
-        # Set basic ground properties
-        ## Ground temperatures from self.ground_temperature1
+        # Calculate sky emissivity (using https://bigladdersoftware.com/epx/docs/8-0/engineering-reference/page-031.html)
+        def sky_emissivity(dew_point_temperature, total_sky_cover):
+            return (0.787 + 0.764 * np.log((dew_point_temperature + 273.15) / 273.15)) * (
+                        1 + 0.0224 * total_sky_cover - 0.0035 * np.power(total_sky_cover, 2) + 0.0028 * np.power(
+                    total_sky_cover, 3))
+        sky_emissivity = sky_emissivity(self.dew_point_temperature, self.total_sky_cover / 10)
 
-        # The roughness correlation is taken from Figure 1, Page 22.4, ASHRAE Handbook of Fundamentals (ASHRAE 1989)
+        # Calculate ground surface convective heat transfer coefficient (using SimpleCombined method from https://bigladdersoftware.com/epx/docs/8-0/engineering-reference/page-020.html)
+        # Todo- move into self-contained method
         material = {
             "Very rough": {"D": 11.58, "E": 5.89, "F": 0},
             "Rough": {"D": 12.49, "E": 4.065, "F": 0.028},
@@ -2684,167 +2693,65 @@ class Weather(object):
             'Smooth': {"D": 10.22, "E": 3.1, "F": 0},
             'Very smooth': {"D": 8.23, "E": 3.33, "F": -0.036},
         }
-        mt = "Medium rough"
+        ground_convective_heat_transfer_coefficient = material[ground_roughness]["D"] + material[ground_roughness][
+            "E"] * pedestrian_wind_speed + material[ground_roughness]["F"] * np.power(pedestrian_wind_speed, 2)
+        ground_k_value = np.interp(np.power(self.relative_humidity, 3), [0, 1e6], [0.33, 1.4])
 
-        self.convective_heat_transfer_coefficient = material[mt]["D"] + material[mt]["E"] * self.pedestrian_wind_speed + \
-                                                    material[mt]["F"] * np.power(self.pedestrian_wind_speed, 2)
+        # # Calculate ground temperature (using https://www.cableizer.com/blog/post/soil-temperature-calculator/)
+        # ground_temperature = pd.Series(name="ground_temperature", index=self.index, data=[
+        #     ground_temperature_at_depth(0.5, self.dry_bulb_temperature.mean(),
+        #                                 self.dry_bulb_temperature.max() - self.dry_bulb_temperature.min(), j,
+        #                                 soil_diffusivity=0.01) for j in [i if i > 0 else i + 365 for i in (
+        #                 self.index - self.dry_bulb_temperature.resample(
+        #             "1D").mean().idxmin()).total_seconds() / 86400]])
+        ground_temperature = self.ground_temperature_1
 
-        self.ground_k_value = np.interp(np.power(self.relative_humidity, 3), [0, 1e6], [0.33, 1.4])
-        self.ground_emissivity = 0.8
-        self.ground_absorptivity = 0.6
-        self.ground_thickness = 1
+        # Generate sample vectors for radiation from the sky
+        def generate_numerous_vectors(n_samples=1000):
+            # Returns vec, alt, sky
+            vectors = []
+            thetas = []
+            sky = []
+            offset = 2 / n_samples
+            increment = np.pi * (3 - np.sqrt(5))
+            for i in range(n_samples):
+                y = ((i * offset) - 1) + (offset / 2)
+                r = np.sqrt(1 - np.power(y, 2))
+                phi = i * increment
+                x = np.cos(phi) * r
+                z = np.sin(phi) * r
+                theta = np.arctan(z / np.sqrt(np.power(x, 2) + np.power(y, 2)))
+                theta = np.fabs(theta)
+                thetas.append(theta)
+                vec = unit_vector([x, y, z])
+                vectors.append(vec)
+                if z > 0:
+                    sky.append(True)
+                else:
+                    sky.append(False)
+            return np.array(vectors), np.array(thetas), np.array(sky)
+        sample_vectors, sample_vectors_altitude, sample_vectors_is_sky = generate_numerous_vectors(n_samples=1000)
 
-        # CReate a set of 1000 sample points for the sky dome
+        # Define method for "closest point/s"
+        def closest_point(source_points, target_points, n_closest=1):
+            """
+            Find the closest n-points from a set of source points to a set of target points
+            """
+            target_distances, target_indices = spatial.KDTree(target_points).query(source_points, n_closest)
+            return target_distances, target_indices
 
+        # Find the closest patch value indices and distances from the sample vectors
+        sample_vector_closest_patch_vector_distances, sample_vector_closest_patch_vector_indices = closest_point(
+            sample_vectors, self.patch_centroids, n_closest=3)
 
-        self.ground_surface_temperature = None
-
-        return self
-
-
-    # Methods below here for NV method
-
-    def closest_point(source_points, target_points, n_closest=1):
-        from scipy import spatial
-        dists, inds = spatial.KDTree(target_points).query(source_points, n_closest)
-        return dists, inds
-
-    def generate_numerous_vectors(self, n_samples=1000):
-        # Returns vec, alt, sky
-        vectors = []
-        thetas = []
-        sky = []
-        offset = 2 / n_samples
-        increment = np.pi * (3 - np.sqrt(5))
-        for i in range(n_samples):
-            y = ((i * offset) - 1) + (offset / 2)
-            r = np.sqrt(1 - np.power(y, 2))
-            phi = i * increment
-            x = np.cos(phi) * r
-            z = np.sin(phi) * r
-            theta = np.arctan(z / np.sqrt(np.power(x, 2) + np.power(y, 2)))
-            theta = np.fabs(theta)
-            thetas.append(theta)
-            vec = unit_vector([x, y, z])
-            vectors.append(vec)
-            if z > 0:
-                sky.append(True)
-            else:
-                sky.append(False)
-        self.nv_sample_vectors = np.array(vectors)
-        self.nv_sample_thetas = np.array(thetas)
-        self.nv_sample_sky = np.array(sky)
-        return self
-
-    def calculate_sky_emissivity(self):
-        dpt = self.dew_point_temperature + 273.15
-        tsc = self.total_sky_cover / 10
-        self.sky_emissivity = (0.787 + 0.764 * np.log(dpt / 273.15)) * (
-                1 + 0.0224 * tsc - 0.0035 * np.power(tsc, 2) + 0.0028 * np.power(tsc, 3))
-        self.df = pd.concat([self.df, self.sky_emissivity], axis=1)
-        return self
-
-    def calculate_horizontal_ir(self):
-        if self.horizontal_infrared_radiation_intensity is None:
-            stefan_boltzmann_constant = 5.6697E-8
-            dbt = self.dry_bulb_temperature + 273.15
-            self.horizontal_infrared_radiation_intensity = self.sky_emissivity * stefan_boltzmann_constant * np.power(
-                dbt, 4)
-            self.df = pd.concat([self.df, self.horizontal_infrared_radiation_intensity], axis=1)
-        return self
-
-    def calculate_pedestrian_wind_speed(self):
-        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index,
-                                               data=[wind_speed_at_height(ws=i, h1=10, h2=1.5) for i in
-                                                     self.wind_speed])
-        # self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
-        return self
-
-    def calculate_ground_temperature(self):
-        depth = 0.5
-        mn = self.dry_bulb_temperature.mean()
-        rng = self.dry_bulb_temperature.max() - self.dry_bulb_temperature.min()
-        coldest_day = self.dry_bulb_temperature.resample("1D").mean().idxmin()
-
-        gndts = []
-        for j in [i if i > 0 else i + 365 for i in (self.df.index - coldest_day).total_seconds() / 86400]:
-            gndts.append(ground_temperature_at_depth(depth, mn, rng, j, soil_diffusivity=0.01))
-        self.nv_ground_temperature = pd.Series(name="nv_ground_temperature_at_depth", index=self.index, data=gndts)
-        # self.df = pd.concat([self.df, self.ground_temperature_at_depth], axis=1)
-
-        return self
-
-    def calculate_convective_heat_transfer_coefficient(self, roughness="Concrete (Medium Rough)"):
-        material = {
-            "Stucco (Very Rough)": {"D": 11.58, "E": 5.89, "F": 0},
-            "Brick (Rough)": {"D": 12.49, "E": 4.065, "F": 0.028},
-            'Concrete (Medium Rough)': {"D": 10.79, "E": 4.192, "F": 0},
-            'Clear pine (Medium Smooth)': {"D": 8.23, "E": 4, "F": -0.057},
-            'Smooth Plaster(Smooth)': {"D": 10.22, "E": 3.1, "F": 0},
-            'Glass (Very Smooth)': {"D": 8.23, "E": 3.33, "F": -0.036},
-        }
-        ws = self.pedestrian_wind_speed
-        self.convective_heat_transfer_coefficient = material[roughness]["D"] + material[roughness]["E"] * ws + \
-                                                    material[roughness]["F"] * np.power(ws, 2)
-        return self
-
-    def resample_sky_dome(self):
-        from scipy import spatial
-        # Calculate the distances and indices between the sample points created using generate_numerous_vectors() method, and the gendaymtx sky-dome, for the closest 3 points.
-        # This part can be calculated once, regardless of the hour of year
-        self.nv_sample_distances, self.nv_sample_indices = spatial.KDTree(self.patch_centroids).query(
-            self.nv_sample_vectors, 3)
-
-    def calculate_numerous_vector_radiation_values(self):
-
-        numerous_vector_radiation_values = []
-        for total_sky_matrix_hour in self.total_sky_matrix:
-            # Calculate NValues
-            n_values = (total_sky_matrix_hour[self.nv_sample_indices] * self.nv_sample_distances).sum(
-                axis=1) / self.nv_sample_distances.sum(axis=1)
-
-            # Replace values where vectors are below ground
-            n_values = np.where(self.nv_sample_vectors[:, 2] <= 0, 0, n_values)
-
-            total_sky_matrix_hour_radiation = sum(
-                total_sky_matrix_hour)  # total hourly radiation from original sky matrix
-            resampled_sky_matrix_hour_radiation = sum(n_values)  # total hourly radiation from sampled sky matrix
-
-            numerous_vector_radiation_values.append(np.where(n_values != 0,
-                                                             n_values / resampled_sky_matrix_hour_radiation * total_sky_matrix_hour_radiation,
-                                                             0))
-
-        self.nv_radiation = np.array(numerous_vector_radiation_values)
-
-        return self
-
-    def calculate_sun_view_factor(self):
-        """
-        Calculate the view factor between a Human body and direct sunlight
-        If seated: Fp ≈ 0.25
-        """
+        # Calculate the sun view factors for each of the sample vectors.
         az = np.pi / 4  # 45 degrees
-        self.nv_sun_view_factor = np.where(self.nv_sample_sky,
-                                           0.0355 * np.sin(self.nv_sample_thetas) + 2.33 * np.cos(
-                                               self.nv_sample_thetas) * np.sqrt(
-                                               0.0213 * np.power(np.cos(az), 2) + 0.0091 * np.power(np.sin(az), 2)), 0)
-        return self
+        sun_view_factors = np.where(sample_vectors_is_sky, 0.0355 * np.sin(sample_vectors_altitude) + 2.33 * np.cos(
+            sample_vectors_altitude) * np.sqrt(0.0213 * np.power(np.cos(az), 2) + 0.0091 * np.power(np.sin(az), 2)), 0)
 
-    def m2_total_radiation(self):
-        A = self.nv_sample_thetas[self.nv_sample_sky]
-        B = np.array([i[self.nv_sample_sky] for i in self.nv_radiation])
-        C = np.sin(A) * B
-        self.nv_m2_radiation = C.sum(axis=1)
-        return self
-
-    def ray_trace_1000(self):
-        """
-        A dummy method that populates the ray-trace values - without actually ray-tracing them in-lieu of any decent
-        geometry handler. Warning - this only works when numerous vectors n-samples == 1000!
-        :return:
-        """
+        # Run a pseudo raytrace to get rays intersecting geometry (there is none) - this only works when numerous vectors n-samples == 1000!
         # TODO: Replace this with a Radiance/Numpy-based raytracing method
-        self.nv_last_ray_bounce_vector = np.array(
+        ray_last_bounce_vector = np.array(
             [[0.04471, -0.999, 0], [-0.057073, -0.997, 0.052284], [0.008732, -0.995, 0.099493],
              [0.071865, -0.993, 0.093736], [-0.131816, -0.991, 0.023316], [0.124805, -0.989, 0.07939],
              [-0.041724, -0.987, 0.15521], [-0.079532, -0.985, 0.153133], [0.172465, -0.983, 0.062984],
@@ -3179,53 +3086,300 @@ class Weather(object):
              [-0.042165, 0.987, 0.155091], [-0.067801, 0.989, 0.131461], [0.125608, 0.991, 0.046278],
              [-0.109306, 0.993, 0.044756], [0.042589, 0.995, 0.090339], [0.022955, 0.997, 0.073919],
              [-0.03862, 0.999, 0.022528], ])
-        self.nv_intersected_points = np.array(
-            [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
-             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
-             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
-             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
-             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
-             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
-             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0,
-             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
-             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1,
-             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, ])
+        ray_intersected_points = np.array(
+            [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1,
+             0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1,
+             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0,
+             0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0,
+             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0,
+             1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0,
+             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1,
+             1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1,
+             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
+             0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1,
+             0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
+             0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0,
+             1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
+             1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0,
+             1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
+             1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1,
+             0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
+             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0,
+             0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
+             1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0,
+             1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0,
+             1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1,
+             1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1,
+             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
+             0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1,
+             0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0,
+             0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0,
+             1, ])
+
+        # Find the nearest patch values to each of the ray-traced vectors
+        _, ray_last_bounce_vector_closest_sample_vector_indices = closest_point(ray_last_bounce_vector, sample_vectors,
+                                                                                n_closest=1)
+
+        # Calculate the sky radiation values recieved by each
+        sample_vector_radiation = []
+        for total_sky_matrix_hour in self.total_sky_matrix:
+            # Calculate NValues
+            n_values = (total_sky_matrix_hour[
+                            sample_vector_closest_patch_vector_indices] * sample_vector_closest_patch_vector_distances).sum(
+                axis=1) / sample_vector_closest_patch_vector_distances.sum(axis=1)
+            # Replace values where vectors are below ground
+            n_values = np.where(sample_vectors[:, 2] <= 0, 0, n_values)
+
+            total_sky_matrix_hour_radiation = sum(total_sky_matrix_hour)  # total hourly radiation from original sky matrix
+            resampled_sky_matrix_hour_radiation = sum(n_values)  # total hourly radiation from sampled sky matrix
+
+            sample_vector_radiation.append(
+                np.where(n_values != 0, n_values / resampled_sky_matrix_hour_radiation * total_sky_matrix_hour_radiation,
+                         0))
+
+        sample_vector_radiation = np.array(sample_vector_radiation)
+
+        # Calculate the total radiation received on 1 square metre
+        A = sample_vectors_altitude[sample_vectors_is_sky]
+        B = np.array([i[sample_vectors_is_sky] for i in sample_vector_radiation])
+        C = np.sin(A) * B
+        ground_1m2_radiation = C.sum(axis=1)
+
+        # Calculate Ein - TODO - find out what this is!
+        ein = (sun_view_factors[ray_last_bounce_vector_closest_sample_vector_indices] * sample_vector_radiation[:,
+                                                                                        ray_last_bounce_vector_closest_sample_vector_indices])
+
+        # Calculate Eout - TODO - find out what this is!
+        ground_albedo = 0.2
+        eout = (np.power(ground_albedo, ray_intersected_points) * ein).sum(axis=1)
+
+        # Calculate ground surface temperature
+        a = ground_emissivity * 5.67e-8
+        b = ground_k_value / ground_thickness + ground_convective_heat_transfer_coefficient
+        c = -(ground_k_value * (
+                    ground_temperature + 273.15) / ground_thickness + ground_1m2_radiation * ground_absorptivity + ground_convective_heat_transfer_coefficient * (
+                          self.dry_bulb_temperature + 273.15))
+
+        Ts = []
+        X = 0.5 * np.sqrt((4 * (2 / 3) ** (1 / 3) * c) / (
+                    np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                                      np.sqrt(3) * np.sqrt(
+                                  27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                                      2 ** (1 / 3) * 3 ** (2 / 3) * a)) - 1 / 2 * np.sqrt(-(2 * b) / (a * np.sqrt(
+            (4 * (2 / 3) ** (1 / 3) * c) / (
+                        np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                        np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                        2 ** (1 / 3) * 3 ** (2 / 3) * a))) - (np.sqrt(3) * np.sqrt(
+            27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (2 ** (1 / 3) * 3 ** (
+                    2 / 3) * a) - (4 * (2 / 3) ** (1 / 3) * c) / (np.sqrt(3) * np.sqrt(
+            27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3))
+        if X.sum() > 0:
+            Ts.append(X)
+
+        X = 0.5 * np.sqrt((4 * (2 / 3) ** (1 / 3) * c) / (
+                    np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                                      np.sqrt(3) * np.sqrt(
+                                  27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                                      2 ** (1 / 3) * 3 ** (2 / 3) * a)) + 1 / 2 * np.sqrt(-(2 * b) / (a * np.sqrt(
+            (4 * (2 / 3) ** (1 / 3) * c) / (
+                        np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                        np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                        2 ** (1 / 3) * 3 ** (2 / 3) * a))) - (np.sqrt(3) * np.sqrt(
+            27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (2 ** (1 / 3) * 3 ** (
+                    2 / 3) * a) - (4 * (2 / 3) ** (1 / 3) * c) / (np.sqrt(3) * np.sqrt(
+            27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3))
+        if X.sum() > 0:
+            Ts.append(X)
+
+        X = -0.5 * np.sqrt((4 * (2 / 3) ** (1 / 3) * c) / (
+                    np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                                       np.sqrt(3) * np.sqrt(
+                                   27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                                       2 ** (1 / 3) * 3 ** (2 / 3) * a)) - 1 / 2 * np.sqrt((2 * b) / (a * np.sqrt(
+            (4 * (2 / 3) ** (1 / 3) * c) / (
+                        np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                        np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                        2 ** (1 / 3) * 3 ** (2 / 3) * a))) - (np.sqrt(3) * np.sqrt(
+            27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (2 ** (1 / 3) * 3 ** (
+                    2 / 3) * a) - (4 * (2 / 3) ** (1 / 3) * c) / (np.sqrt(3) * np.sqrt(
+            27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3))
+        if X.sum() > 0:
+            Ts.append(X)
+
+        X = 0.5 * np.sqrt((2 * b) / (a * np.sqrt((4 * (2 / 3) ** (1 / 3) * c) / (
+                    np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                                                             np.sqrt(3) * np.sqrt(
+                                                         27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (
+                                                             1 / 3) / (2 ** (1 / 3) * 3 ** (2 / 3) * a))) - (
+                                      np.sqrt(3) * np.sqrt(
+                                  27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) / (
+                                      2 ** (1 / 3) * 3 ** (2 / 3) * a) - (4 * (2 / 3) ** (1 / 3) * c) / (
+                                      np.sqrt(3) * np.sqrt(
+                                  27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (
+                                      1 / 3)) - 1 / 2 * np.sqrt((4 * (2 / 3) ** (1 / 3) * c) / (
+                    np.sqrt(3) * np.sqrt(27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (1 / 3) + (
+                                                                            np.sqrt(3) * np.sqrt(
+                                                                        27 * a ** 2 * b ** 4 - 256 * a ** 3 * c ** 3) + 9 * a * b ** 2) ** (
+                                                                            1 / 3) / (2 ** (1 / 3) * 3 ** (2 / 3) * a))
+        if X.sum() > 0:
+            Ts.append(X)
+
+        ground_surface_temperature = Ts[0]
+
+        # Calculate atmospheric radiation
+        SVF = 1
+        atmospheric_sky_radiation = sky_emissivity * self.horizontal_infrared_radiation_intensity * SVF
+
+        # Calculate solar radiation
+        ap = 0.7
+        atmospheric_solar_radiation = eout * ap
+
+        # Calculate ground reflected/infrared radiation
+        A1 = 1.2
+        A2 = 1
+        ground_radiation = (A1 / A2) * ground_emissivity * (
+                    sigma * ground_emissivity * np.power(ground_surface_temperature, 4)) * 0.4
+
+        # Calculate experienced Mean Radiant Temperature
+        self.mean_radiant_temperature_nv = np.power(
+            ((atmospheric_sky_radiation + atmospheric_solar_radiation + ground_radiation) / sigma), 0.25) - 273.15
+        print("Open field mean radiant temperature calculations successful")
         return self
 
-    def calculate_ein(self):
-        from scipy import spatial
-        _, inds = spatial.KDTree(self.nv_sample_vectors).query(self.nv_last_ray_bounce_vector, 1)
+    def solar_adjusted_mrt(self):
 
-        self.nv_ein = (self.nv_sun_view_factor[inds] * self.nv_radiation[:, inds])
+        def convert_altitude(altitude):
+            """
+            Converts an altitude (from 0 below, to 180 above), to a range between 0 at horizon to 90 at directly above
+            :param altitude: Original altitude value
+            :return altitude_adjusted: Adjusted altitude value
+            """
+            if altitude < 0:
+                altitude_adjusted = 0
+            elif altitude > 90:
+                altitude_adjusted = 90 - altitude
+            else:
+                altitude_adjusted = altitude
+            return altitude_adjusted
+
+        def convert_azimuth(azimuth):
+            """
+            Converts an azimuth (from 0 at North, moving clockwise), to a range between 0 at North and 180 South (both clock and anti-clockwise)
+            :param azimuth: Original azimuth value
+            :return azimuth_adjusted: Adjusted azimuth value
+            """
+            if azimuth < 180:
+                azimuth_adjusted = azimuth
+            elif azimuth > 180:
+                azimuth_adjusted = 360 - azimuth
+            return azimuth_adjusted
+
+        def fanger_solar_exposure(azimuth, altitude, posture=1):
+            """
+            Determine the exposure factor based on human posture and sun position
+            :param azimuth: Solar azimuth, between 0 and 180 (inclusive)
+            :type azimuth
+            :param altitude: Solar altitude, between 0 and 90 (inclusive)
+            :type altitude
+            :param posture: Human posture. 0=Sitting, 1=Standing
+            :type posture: int
+            :return: solar exposure
+            :rtype
+            """
+
+            # Following lines commented dealt with sun position range issues. convert_azimuth() and convert()_altitude now handle this.
+            # if azimuth < 0:
+            #     raise ValueError('Azimuth is outside the expected range of 0 to 180.')
+            # elif azimuth > 180:
+            #     raise ValueError('Azimuth is outside the expected range of 0 to 180.')
+            # elif altitude < 0:
+            #     raise ValueError('Altitude is outside the expected range of 0 to 90.')
+            # elif altitude > 90:
+            #     raise ValueError('Altitude is outside the expected range of 0 to 90.')
+
+            # Sitting bivariate B-spline and its derivatives
+            sitting_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
+                                [0.42999558258469306, 0.49777802226651985, 0.2858541264803382, 0.2636331839991635,
+                                 0.10059901058304405, 0.5904998653021177, 0.6393605287969937, 0.41177803047742195,
+                                 0.16397939147762605, 0.1145630272512949, -0.07290688451711066, -0.0877360565501316,
+                                 0.03719879969518147, 0.06771059788029093, 0.09444998526069391, 0.5573351684449549,
+                                 0.6212235986152396, 0.3384990152297299, 0.25505266892999545, 0.1011441730110879,
+                                 0.4432956571996788, 0.49809124858382825, 0.29471168936411446, 0.19682482035937438,
+                                 0.10008130856803796], 4, 4]
+
+            # Standing bivariate B-spline and its derivatives
+            standing_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
+                                 [0.365433469329803, 0.41471995039390336, 0.3539202584010255, 0.35205668670475776,
+                                  0.21505967838173534, 0.5304745700779437, 0.6180584137541132, 0.11434859278048302,
+                                  0.4862162611010728, 0.20252438358996272, -0.015147290187610778, 0.22189948439503024,
+                                  0.6990946114268216, -0.000718703369787728, 0.22472889635480628, 0.5176922764465676,
+                                  0.35055123160310636, -0.0032935618498728487, 0.3404006983313149, 0.19936403473400507,
+                                  0.37870178660536147, 0.24613731159172733, 0.06300314787643235, 0.23364607863218287,
+                                  0.2171651821703637], 4, 4]
+
+            solar_exposure = None
+            if posture == 0:
+                solar_exposure = bisplev(convert_azimuth(azimuth), convert_altitude(altitude), sitting_bisplrep)
+            elif posture == 1:
+                solar_exposure = bisplev(convert_azimuth(azimuth), convert_altitude(altitude), standing_bisplrep)
+
+            return solar_exposure
+
+        def solar_adjusted_mean_radiant_temperature(dry_bulb_temperature, diffuse_horizontal_radiation,
+                                                    global_horizontal_radiation, direct_normal_radiation,
+                                                    solar_azimuth, solar_altitude,
+                                                    clothing_absorbtivity = 0.7, ground_reflectivity = 0.4,
+                                                    shading_transmissivity = 1.0):
+            """
+            This function is based on the ladybug method by Mostapha Roudsari, building on formulas translating solar radiation
+            into an effective radiant field and solar-adjusted mean radiant temperature. For further details on this
+            approximation, see Arens, Edward; Huang, Li; Hoyt, Tyler; Zhou, Xin; Shiavon, Stefano. (2014). Modeling the comfort
+            effects of short-wave solar radiation indoors.  Indoor Environmental Quality (IEQ). http://escholarship.org/uc/item/89m1h2dg#page-4
+            :param dry_bulb_temperature: Dry-bulb temperature
+            :param diffuse_horizontal_radiation: Diffuse solar horizontal radiation
+            :param global_horizontal_radiation: Global solar horizontal radiation
+            :param direct_normal_radiation: Direct solar normal radiation
+            :param solar_azimuth: Solar azimuth
+            :param solar_altitude: Solar altitude
+            :param clothing_absorbtivity: The fraction of solar radiation absorbed by the human body. The default is set to 0.7 for (average/brown) skin and average clothing. Increase this value for darker skin or darker clothing.
+            :param ground_reflectivity:  The fraction of solar radiation reflected off of the ground. By default, this is set to 0.4, characteristic of concrete paving. 0.25 would correspond to outdoor grass or dry bare soil.
+            :param shading_transmissivity: The fraction of shading transmissivity. exposed=1, shaded=0.
+            :return:
+            """
+            # TODO: Add error handling, range and type checking
+            if solar_altitude <= 0:
+                solar_adjusted_mrt = dry_bulb_temperature
+            else:
+                fraction_body_exposed_radiation = 0.71  # Fraction of the body visible to radiation. 0.725 is for standing, 0.696 for sitting, 0.68 for lying down. A nominal value of 0.71 is used.
+                radiative_heat_transfer_coefficient = 6.012  # A good guess at the radiative heat transfer coefficient
+                projected_area_fraction = fanger_solar_exposure(solar_azimuth, solar_altitude, posture=1)
+                effective_radiant_flux = ((0.5 * fraction_body_exposed_radiation * (
+                        diffuse_horizontal_radiation + (global_horizontal_radiation * ground_reflectivity)) + (
+                                                   fraction_body_exposed_radiation * projected_area_fraction * direct_normal_radiation)) * shading_transmissivity) * (
+                                                 clothing_absorbtivity / 0.95)
+                mean_radiant_temperature_delta = (
+                        effective_radiant_flux / (fraction_body_exposed_radiation * radiative_heat_transfer_coefficient))
+                solar_adjusted_mrt = dry_bulb_temperature + mean_radiant_temperature_delta
+            return solar_adjusted_mrt
+
+        self.mean_radiant_temperature_sa = self.df.apply(
+            lambda x: solar_adjusted_mean_radiant_temperature(
+                dry_bulb_temperature=x.dry_bulb_temperature,
+                direct_normal_radiation=x.direct_normal_radiation,
+                diffuse_horizontal_radiation=x.diffuse_horizontal_radiation,
+                global_horizontal_radiation=x.global_horizontal_radiation,
+                solar_altitude=x.solar_elevation_angle,
+                solar_azimuth=x.solar_azimuth_angle,
+                ground_reflectivity=0.4,
+                clothing_absorbtivity=0.7,
+                shading_transmissivity=1
+            ), axis=1
+        )
+        print("Solar adjusted mean radiant temperature calculations successful")
         return self
 
-    def calculate_ein_out(self):
-        from scipy import spatial
-        dists, LenInt = spatial.KDTree(self.nv_sample_vectors).query(self.nv_last_ray_bounce_vector, 1)
-        albedo = 0.2
-
-        self.nv_eout = (np.power(albedo, LenInt) * self.nv_ein * 1000).sum(axis=1)
-
-        return self
-
+    # TODO: Add comfort metrics into the mix here!
+    
     # Methods below here are for plotting only
 
     def plot_heatmap(self, variable, cmap='Greys', close=True, save=False):
