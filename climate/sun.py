@@ -79,11 +79,33 @@ def gendaymtx(wea_file, direct=True, reinhart=False):
     subprocess.run(cmd, shell=True)
 
     # Load the resultant annual patch-value matrix
+    radiation_matrix = load_sky_matrix(mtx_file, reinhart)
+
+    return radiation_matrix
+
+
+def load_sky_matrix(mtx_file, reinhart=False):
+    """
+    Load an existing matrix file created by gendaymtx.
+
+    Parameters
+    ----------
+    mtx_file : string
+        Path to matrix file containing either direct or diffuse radiation
+    reinhart : bool
+        True: Load a sky-matrix with 577 patches, False: Load a sky-matrix with 146 patches
+
+    Returns
+    -------
+    radiation_matrix : np.array
+        A Numpy matrix of shape 8760*n, corresponding to each hour of the year, and each patch value
+
+    """
     radiation_matrix = pd.read_csv(mtx_file, sep="\s+", skip_blank_lines=True, skiprows=8, header=None).values
     radiation_matrix = np.sum(radiation_matrix * np.array([0.265074126, 0.670114631, 0.064811243]), axis=1)
     radiation_matrix = np.array(list(chunk(radiation_matrix, 8760))[1:])
-    radiation_matrix = np.multiply(radiation_matrix.T, REINHART_PATCH_CONVERSION_FACTOR if reinhart else TREGENZA_PATCH_CONVERSION_FACTOR)
-
+    radiation_matrix = np.multiply(radiation_matrix.T,
+                                   REINHART_PATCH_CONVERSION_FACTOR if reinhart else TREGENZA_PATCH_CONVERSION_FACTOR)
     return radiation_matrix
 
 

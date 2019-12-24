@@ -25,3 +25,33 @@ KELVIN = 273.15
 """
 
 DATETIME_INDEX = pd.date_range(start="2018-01-01 00:00:00", end="2019-01-01 00:00:00", freq="60T", closed="left")
+
+# materials = {
+#     "Dry sand": {
+#         "diffusivity": 0.001,
+#         "density": 1800,
+#         "roughness": "Rough",
+#         "emissivity": 0,
+#         "absorptivity": 0,
+#         "albedo": 0.4,
+#         "conductivity": 0
+#     },
+#     "Asphalt": {
+#         "diffusivity": 0.001,
+#         "density": 1800,
+#         "roughness": "Rough",
+#         "emissivity": 0,
+#         "absorptivity": 0,
+#         "albedo": 0.4,
+#         "conductivity": 0
+#     },
+#     "Damp grass": {
+#         "diffusivity": 0.001,
+#         "density": 1800,
+#         "roughness": "Rough",
+#         "emissivity": 0,
+#         "absorptivity": 0,
+#         "albedo": 0.4,
+#         "conductivity": 0
+#     },
+# }
