@@ -1,4 +1,4 @@
-from climate.helpers import chunk
+from climate.common.helpers import chunk
 
 import pandas as pd
 import numpy as np

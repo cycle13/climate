@@ -1,4 +1,4 @@
 from . import \
-    old, \
-    old_plot, \
-    helpers
+    old
+from .plot import old_plot
+from .common import helpers

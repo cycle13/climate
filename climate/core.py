@@ -1,17 +1,15 @@
-from climate.constants import *
-from climate.helpers import *
-from climate.psychrometrics import annual_psychrometrics
-from climate.sun import annual_sun_position, generate_sky_matrix
-from climate.mean_radiant_temperature import mrt_solar_adjusted, mrt_openfield
-from climate.comfort import universal_thermal_climate_index, standard_effective_temperature, utci_openfield, \
+from climate.common.helpers import *
+from climate.compute.psychrometrics import annual_psychrometrics
+from climate.compute.sun import annual_sun_position, generate_sky_matrix
+from climate.compute.mean_radiant_temperature import mrt_solar_adjusted, mrt_openfield
+from climate.compute.comfort import utci_openfield, \
     utci_solar_adjusted, set_solar_adjusted, set_openfield
-from climate.ground_temperature import weatherfile_ground_temperatures, annual_ground_temperature_at_depth
-from climate.wind import pedestrian_wind_speed
+from climate.compute.ground_temperature import weatherfile_ground_temperatures, annual_ground_temperature_at_depth
+from climate.compute.wind import pedestrian_wind_speed
 
 import pandas as pd
 import pathlib
 from io import StringIO
-import warnings
 
 
 class Weather(object):
@@ -53,7 +51,7 @@ class Weather(object):
         self.comments_2 = None
 
         # Series variables
-        self.index = DATETIME_INDEX
+        self.index = None
         # self.df = None
         self.data_source_and_uncertainty_flags = None
         self.dry_bulb_temperature = None
@@ -217,7 +215,7 @@ class Weather(object):
             ]
 
             # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
-            self.index = self.index.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
+            self.index = DATETIME_INDEX.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
             df.index = self.index
 
             # Drop date/time columns

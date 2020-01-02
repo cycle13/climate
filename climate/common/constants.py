@@ -47,6 +47,21 @@ metabolic_rates = {
         "Running 9mph": 9.5
     }
 
+time_of_year_mask = {
+        "Daily": ((DATETIME_INDEX.hour >= 0) & (DATETIME_INDEX.hour <= 24)),
+        "Morning": ((DATETIME_INDEX.hour >= 5) & (DATETIME_INDEX.hour <= 10)),
+        "Midday": ((DATETIME_INDEX.hour >= 11) & (DATETIME_INDEX.hour <= 13)),
+        "Afternoon": ((DATETIME_INDEX.hour >= 14) & (DATETIME_INDEX.hour <= 18)),
+        "Evening": ((DATETIME_INDEX.hour >= 19) & (DATETIME_INDEX.hour <= 22)),
+        "Night": ((DATETIME_INDEX.hour >= 23) | (DATETIME_INDEX.hour <= 4)),
+
+        "Annual": ((DATETIME_INDEX.month >= 1) & (DATETIME_INDEX.month <= 12)),
+        "Spring": ((DATETIME_INDEX.month >= 3) & (DATETIME_INDEX.month <= 5)),
+        "Summer": ((DATETIME_INDEX.month >= 6) & (DATETIME_INDEX.month <= 8)),
+        "Autumn": ((DATETIME_INDEX.month >= 9) & (DATETIME_INDEX.month <= 11)),
+        "Winter": ((DATETIME_INDEX.month <= 2) | (DATETIME_INDEX.month >= 12))
+    }
+
 # materials = {
 #     "Dry sand": {
 #         "diffusivity": 0.001,

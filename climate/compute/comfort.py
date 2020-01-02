@@ -1,5 +1,5 @@
 # TODO: Add comfort metrics into the mix here!
-from climate.constants import KELVIN
+from climate.common.constants import KELVIN
 
 from psychrolib import GetSatVapPres
 

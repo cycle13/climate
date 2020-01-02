@@ -1,5 +1,3 @@
-from climate.old import *
-
 import matplotlib.pyplot as plt
 from matplotlib import dates, cm
 from matplotlib.ticker import MaxNLocator
