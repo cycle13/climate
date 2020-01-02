@@ -26,6 +26,27 @@ KELVIN = 273.15
 
 DATETIME_INDEX = pd.date_range(start="2018-01-01 00:00:00", end="2019-01-01 00:00:00", freq="60T", closed="left")
 
+metabolic_rates = {
+        "Sleeping": 0.7,
+        "Reclining": 0.8,
+        "Sitting": 1.0,
+        "Typing": 1.1,
+        "Standing": 1.2,
+        "Driving": 1.5,
+        "Cooking": 1.8,
+        "Walking": 1.7,
+        "Walking 2mph": 2.0,
+        "Lifting 10lbs": 2.1,
+        "Walking 3mph": 2.6,
+        "House Cleaning": 2.7,
+        "Basketball": 3,
+        "Dancing": 3.4,
+        "Walking 4mph": 3.8,
+        "Lifting 100lbs": 4.0,
+        "Shoveling": 4.4,
+        "Running 9mph": 9.5
+    }
+
 # materials = {
 #     "Dry sand": {
 #         "diffusivity": 0.001,

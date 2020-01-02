@@ -4,7 +4,7 @@ from climate.psychrometrics import annual_psychrometrics
 from climate.sun import annual_sun_position, generate_sky_matrix
 from climate.mean_radiant_temperature import mrt_solar_adjusted, mrt_openfield
 from climate.comfort import universal_thermal_climate_index, standard_effective_temperature, utci_openfield, \
-    utci_solar_adjusted
+    utci_solar_adjusted, set_solar_adjusted, set_openfield
 from climate.ground_temperature import weatherfile_ground_temperatures, annual_ground_temperature_at_depth
 from climate.wind import pedestrian_wind_speed
 
@@ -128,11 +128,14 @@ class Weather(object):
 
         # NV method values
         self.nv_sample_vectors = None
-        self.mean_radiant_temperature_openfield = None
         self.mean_radiant_temperature_solar_adjusted = None
+        self.mean_radiant_temperature_openfield = None
 
         self.universal_thermal_climate_index_solar_adjusted = None
         self.universal_thermal_climate_index_openfield = None
+
+        self.standard_effective_temperature_solar_adjusted = None
+        self.standard_effective_temperature_openfield = None
 
     def read(self, sky_matrix=False):
         """
@@ -278,18 +281,17 @@ class Weather(object):
         # Run the openfield MRT method
         mrt_openfield(self)
 
-        # Run the UTCI using the openfield MRT values
-        # utci_openfield(self)
-
         # Run the UTCI using the solar adjusted MRT values
-        # utci_solar_adjusted(self)
+        utci_solar_adjusted(self)
 
-        # if openfield_mrt:
-        #     if self.total_sky_matrix is None:
-        #         self.sky_matrix(reinhart=True)
-        #
-        # if sa_mrt:
-        #     self.mean_radiant_temperature_sa()
+        # Run the UTCI using the openfield MRT values
+        utci_openfield(self)
+
+        # Run the SET using the solar adjusted MRT values
+        set_solar_adjusted(self)
+
+        # Run the SET using the openfield MRT values
+        set_openfield(self)
 
         return self
 
@@ -354,11 +356,6 @@ class Weather(object):
         self.csv_file = file_path
         print("CSV file created: {0:}".format(self.csv_file))
         return df
-
-    ######################
-    # Additional methods #
-    ######################
-
 
 # class Ground(object):
 #

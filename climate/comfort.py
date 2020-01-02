@@ -250,6 +250,12 @@ def universal_thermal_climate_index(air_temperature, mean_radiant_temperature, a
     return utci_approx[0]
 
 
+def findSaturatedVaporPressureTorr(air_temperature):
+    # calculates Saturated Vapor Pressure (Torr) at Temperature air_temperature (C) Used frequently throughtout the pmv comfort functions.
+    # TODO: Find source for this method and conversion from Pa if possible using psychrolib instead
+    return np.exp(18.6686 - 4030.183 / (air_temperature + KELVIN))
+
+
 def standard_effective_temperature(air_temperature, mean_radiant_temperature, air_velocity, relative_humidity, metabolic_rate=1, clo_value=1):
     """
     Compute the standard effective temperature
@@ -273,39 +279,11 @@ def standard_effective_temperature(air_temperature, mean_radiant_temperature, ai
     # TODO: Reformat docstring to NumPy style (https://docs.scipy.org/doc/numpy-1.15.0/docs/howto_document.html)
     # TODO: Add metabolic rates to docstring
 
-    import math
-
-    metabolic_rates = {
-        "Sleeping": 0.7,
-        "Reclining": 0.8,
-        "Sitting": 1.0,
-        "Typing": 1.1,
-        "Standing": 1.2,
-        "Driving": 1.5,
-        "Cooking": 1.8,
-        "Walking": 1.7,
-        "Walking 2mph": 2.0,
-        "Lifting 10lbs": 2.1,
-        "Walking 3mph": 2.6,
-        "House Cleaning": 2.7,
-        "Basketball": 3,
-        "Dancing": 3.4,
-        "Walking 4mph": 3.8,
-        "Lifting 100lbs": 4.0,
-        "Shoveling": 4.4,
-        "Running 9mph": 9.5
-    }
-
-    wme = 0  # External work done - usually around 0 - used for adding additional heat to person given uncontrollable factors
-
-    # Function to find the saturation vapour pressure, used frequently throughout the comfPierceSET function.
-    def findSaturatedVaporPressureTorr(T):
-        # calculates Saturated Vapor Pressure (Torr) at Temperature T  (C)
-        return np.exp(18.6686 - 4030.183 / (T + 235.0))
+    wme = 0  # External work done - usually 0 - used for adding additional heat to person given uncontrollable factors
 
     # Key initial variables.
     VaporPressure = (relative_humidity * findSaturatedVaporPressureTorr(air_temperature)) / 100
-    AirVelocity = max(air_velocity, 0.1)
+    AirVelocity = np.where(air_velocity < 0.1, 0.1, air_velocity)
     KCLO = 0.25
     BODYWEIGHT = 69.9
     BODYSURFACEAREA = 1.8258
@@ -353,7 +331,7 @@ def standard_effective_temperature(air_temperature, mean_radiant_temperature, ai
 
     CHC = 3.0 * np.power(PressureInAtmospheres, 0.53)
     CHCV = 8.600001 * np.power((AirVelocity * PressureInAtmospheres), 0.53)
-    CHC = max(CHC, CHCV)
+    CHC = np.where(CHC > CHCV, CHC, CHCV)#max(CHC, CHCV)
 
     # initial estimate of Tcl
     CHR = 4.7
@@ -379,6 +357,7 @@ def standard_effective_temperature(air_temperature, mean_radiant_temperature, ai
                 RA = 1.0 / (FACL * CTC)  # resistance of air layer to dry heat transfer
                 TOP = (CHR * mean_radiant_temperature + CHC * air_temperature) / CTC
                 TCL = (RA * TempSkin + RCL * TOP) / (RA + RCL)
+
         flag = False
         DRY = (TempSkin - TOP) / (RA + RCL)
         HFCS = (TempCore - TempSkin) * (5.28 + 1.163 * SkinBloodFlow)
@@ -403,8 +382,10 @@ def standard_effective_temperature(air_temperature, mean_radiant_temperature, ai
         WARMB = (BDSIG > 0) * BDSIG
         COLDB = ((-1.0 * BDSIG) > 0) * (-1.0 * BDSIG)
         SkinBloodFlow = (SkinBloodFlowNeutral + CDIL * WARMC) / (1 + CSTR * COLDS)
-        if SkinBloodFlow > 90.0: SkinBloodFlow = 90.0
-        if SkinBloodFlow < 0.5: SkinBloodFlow = 0.5
+        if SkinBloodFlow > 90.0:
+            SkinBloodFlow = 90.0
+        if SkinBloodFlow < 0.5:
+            SkinBloodFlow = 0.5
         REGSW = CSW * WARMB * np.exp(WARMS / 10.7)
         if REGSW > 500.0: REGSW = 500.0
         ERSW = 0.68 * REGSW
@@ -482,6 +463,32 @@ def standard_effective_temperature(air_temperature, mean_radiant_temperature, ai
     return X
 
 
+def set_openfield(self, metabolic_rate=1, clo_value=1):
+
+    # TODO: Convert this method into a matricized version for speed!
+
+    standard_effective_temperature_openfield = [standard_effective_temperature(
+        self.dry_bulb_temperature[i],
+        self.mean_radiant_temperature_openfield[i],
+        self.pedestrian_wind_speed[i], self.relative_humidity[i], metabolic_rate, clo_value) for i in range(8760)]
+    self.standard_effective_temperature_openfield = pd.Series(index=self.index, data=standard_effective_temperature_openfield, name="standard_effective_temperature_openfield")
+    print("Standard effective temperature (openfield) calculations successful")
+    return self.standard_effective_temperature_openfield
+
+
+def set_solar_adjusted(self, metabolic_rate=1, clo_value=1):
+
+    # TODO: Convert this method into a matricized version for speed!
+
+    standard_effective_temperature_solar_adjusted = [standard_effective_temperature(
+        self.dry_bulb_temperature[i],
+        self.mean_radiant_temperature_solar_adjusted[i],
+        self.pedestrian_wind_speed[i], self.relative_humidity[i], metabolic_rate, clo_value) for i in range(8760)]
+    self.standard_effective_temperature_solar_adjusted = pd.Series(index=self.index, data=standard_effective_temperature_solar_adjusted, name="standard_effective_temperature_solar_adjusted")
+    print("Standard effective temperature (solar adjusted) calculations successful")
+    return self.standard_effective_temperature_solar_adjusted
+
+
 def utci_openfield(self):
     universal_thermal_climate_index_openfield = universal_thermal_climate_index(
         self.dry_bulb_temperature,
@@ -490,7 +497,6 @@ def utci_openfield(self):
         self.relative_humidity
     )
     self.universal_thermal_climate_index_openfield = pd.Series(index=self.index, data=universal_thermal_climate_index_openfield, name="universal_thermal_climate_index_openfield")
-    # self.df = pd.concat([self.df, self.universal_thermal_climate_index_openfield], axis=1).drop_duplicates(keep="last")
     print("Universal thermal climate index (openfield) calculations successful")
     return self.universal_thermal_climate_index_openfield
 
@@ -503,6 +509,5 @@ def utci_solar_adjusted(self):
         self.relative_humidity
     )
     self.universal_thermal_climate_index_solar_adjusted = pd.Series(index=self.index, data=universal_thermal_climate_index_solar_adjusted, name="universal_thermal_climate_index_solar_adjusted")
-    # self.df = pd.concat([self.df, self.universal_thermal_climate_index_solar_adjusted], axis=1).drop_duplicates(keep="last")
-    print("Universal thermal climate index (solar adjusted) calculations successful (SA)")
+    print("Universal thermal climate index (solar adjusted) calculations successful")
     return self.universal_thermal_climate_index_solar_adjusted

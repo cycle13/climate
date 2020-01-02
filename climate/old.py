@@ -1283,9 +1283,9 @@
 #     wme = 0  # External work done - usually around 0 - used for adding additional heat to person given uncontrollable factors
 # 
 #     # Function to find the saturation vapour pressure, used frequently throughout the comfPierceSET function.
-#     def findSaturatedVaporPressureTorr(T):
-#         # calculates Saturated Vapor Pressure (Torr) at Temperature T  (C)
-#         return math.exp(18.6686 - 4030.183 / (T + 235.0))
+#     def findSaturatedVaporPressureTorr(air_temperature):
+#         # calculates Saturated Vapor Pressure (Torr) at Temperature air_temperature  (C)
+#         return math.exp(18.6686 - 4030.183 / (air_temperature + 235.0))
 # 
 #     # Key initial variables.
 #     VaporPressure = (relative_humidity * findSaturatedVaporPressureTorr(air_temperature)) / 100
