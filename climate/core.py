@@ -1,27 +1,17 @@
 from climate.constants import *
 from climate.helpers import *
-from climate.psychrometrics import psychrometric_calculations
-from climate.sun import sun_position, sky_matrix_calculations, load_sky_matrix
-from climate.environment import *
-from climate.comfort import *
-
-import platform
-import subprocess
+from climate.psychrometrics import annual_psychrometrics
+from climate.sun import annual_sun_position, generate_sky_matrix
+from climate.mean_radiant_temperature import mrt_solar_adjusted, mrt_openfield
+from climate.comfort import universal_thermal_climate_index, standard_effective_temperature, utci_openfield, \
+    utci_solar_adjusted
+from climate.ground_temperature import weatherfile_ground_temperatures, annual_ground_temperature_at_depth
+from climate.wind import pedestrian_wind_speed
 
 import pandas as pd
-import numpy as np
 import pathlib
 from io import StringIO
-# from climate.helpers import slugify, chunk, angle_between, renamer, unit_vector, wind_speed_at_height, ground_temperature_at_depth
-from pvlib.solarposition import get_solarposition
-from psychrolib import GetHumRatioFromRelHum
-from scipy import spatial
-from scipy.interpolate import bisplev
-
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.ticker import MaxNLocator
-from matplotlib import cm
+import warnings
 
 
 class Weather(object):
@@ -64,7 +54,7 @@ class Weather(object):
 
         # Series variables
         self.index = DATETIME_INDEX
-        self.df = None
+        # self.df = None
         self.data_source_and_uncertainty_flags = None
         self.dry_bulb_temperature = None
         self.dew_point_temperature = None
@@ -95,9 +85,12 @@ class Weather(object):
         self.albedo = None
         self.liquid_precipitation_depth = None
         self.liquid_precipitation_quantity = None
-        self.ground_temperature_1 = None
-        self.ground_temperature_2 = None
-        self.ground_temperature_3 = None
+
+        # Loaded and calculated ground temperatures
+        self.ground_temperature_500_weatherfile = None
+        self.ground_temperature_2000_weatherfile = None
+        self.ground_temperature_4000_weatherfile = None
+        self.ground_temperature_calculated = None
 
         # Path variables
         self.wea_file = None
@@ -135,14 +128,13 @@ class Weather(object):
 
         # NV method values
         self.nv_sample_vectors = None
-        self.mean_radiant_temperature_of = None
-        self.mean_radiant_temperature_sa = None
+        self.mean_radiant_temperature_openfield = None
+        self.mean_radiant_temperature_solar_adjusted = None
 
-        self.utci_sa = None
-        self.utci_of = None
+        self.universal_thermal_climate_index_solar_adjusted = None
+        self.universal_thermal_climate_index_openfield = None
 
-    # Methods below here for read/write
-    def read(self, sky_matrix=False, reuse_matrix=True):
+    def read(self, sky_matrix=False):
         """
         Read EPW weather-file into weather object.
 
@@ -166,70 +158,69 @@ class Weather(object):
         with open(self.file_path, "r") as f:
             dat = f.readlines()
 
-        # Read location data
-        self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = dat[0].strip().split(",")[1:]
-        self.latitude = float(self.latitude)
-        self.longitude = float(self.longitude)
-        self.time_zone = float(self.time_zone)
-        self.elevation = float(self.elevation)
-        self.design_conditions = ",".join(dat[1].strip().split(",")[1:])
-        self.typical_extreme_periods = ",".join(dat[2].strip().split(",")[1:])
-        self.ground_temperatures = ",".join(dat[3].strip().split(",")[1:])
-        self.holidays_daylight_savings = ",".join(dat[4].strip().split(",")[1:])
-        self.comments_1 = ",".join(dat[5].strip().split(",")[1:])
-        self.comments_2 = ",".join(dat[6].strip().split(",")[1:])
+            # Read location data
+            self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = dat[0].strip().split(",")[1:]
+            self.latitude = float(self.latitude)
+            self.longitude = float(self.longitude)
+            self.time_zone = float(self.time_zone)
+            self.elevation = float(self.elevation)
+            self.design_conditions = ",".join(dat[1].strip().split(",")[1:])
+            self.typical_extreme_periods = ",".join(dat[2].strip().split(",")[1:])
+            self.ground_temperatures = ",".join(dat[3].strip().split(",")[1:])
+            self.holidays_daylight_savings = ",".join(dat[4].strip().split(",")[1:])
+            self.comments_1 = ",".join(dat[5].strip().split(",")[1:])
+            self.comments_2 = ",".join(dat[6].strip().split(",")[1:])
 
-        # Read the data table
-        df = pd.read_csv(StringIO("\n".join(dat[8:])), header=None)
+            # Read the data table
+            df = pd.read_csv(StringIO("\n".join(dat[8:])), header=None)
 
-        # Rename columns
-        df.columns = [
-            'year',
-            'month',
-            'day',
-            'hour',
-            'minute',
-            'data_source_and_uncertainty_flags',
-            'dry_bulb_temperature',
-            'dew_point_temperature',
-            'relative_humidity',
-            'atmospheric_station_pressure',
-            'extraterrestrial_horizontal_radiation',
-            'extraterrestrial_direct_normal_radiation',
-            'horizontal_infrared_radiation_intensity',
-            'global_horizontal_radiation',
-            'direct_normal_radiation',
-            'diffuse_horizontal_radiation',
-            'global_horizontal_illuminance',
-            'direct_normal_illuminance',
-            'diffuse_horizontal_illuminance',
-            'zenith_luminance',
-            'wind_direction',
-            'wind_speed',
-            'total_sky_cover',
-            'opaque_sky_cover',
-            'visibility',
-            'ceiling_height',
-            'present_weather_observation',
-            'present_weather_codes',
-            'precipitable_water',
-            'aerosol_optical_depth',
-            'snow_depth',
-            'days_since_last_snowfall',
-            'albedo',
-            'liquid_precipitation_depth',
-            'liquid_precipitation_quantity',
-        ]
+            # Rename columns
+            df.columns = [
+                'year',
+                'month',
+                'day',
+                'hour',
+                'minute',
+                'data_source_and_uncertainty_flags',
+                'dry_bulb_temperature',
+                'dew_point_temperature',
+                'relative_humidity',
+                'atmospheric_station_pressure',
+                'extraterrestrial_horizontal_radiation',
+                'extraterrestrial_direct_normal_radiation',
+                'horizontal_infrared_radiation_intensity',
+                'global_horizontal_radiation',
+                'direct_normal_radiation',
+                'diffuse_horizontal_radiation',
+                'global_horizontal_illuminance',
+                'direct_normal_illuminance',
+                'diffuse_horizontal_illuminance',
+                'zenith_luminance',
+                'wind_direction',
+                'wind_speed',
+                'total_sky_cover',
+                'opaque_sky_cover',
+                'visibility',
+                'ceiling_height',
+                'present_weather_observation',
+                'present_weather_codes',
+                'precipitable_water',
+                'aerosol_optical_depth',
+                'snow_depth',
+                'days_since_last_snowfall',
+                'albedo',
+                'liquid_precipitation_depth',
+                'liquid_precipitation_quantity',
+            ]
 
-        # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
-        self.index = self.index.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
-        df.index = self.index
+            # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
+            self.index = self.index.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
+            df.index = self.index
 
-        # Drop date/time columns
-        df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
+            # Drop date/time columns
+            df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
 
         # Make loaded data accessible
-        self.df = df
         self.data_source_and_uncertainty_flags = df.data_source_and_uncertainty_flags
         self.dry_bulb_temperature = df.dry_bulb_temperature
         self.dew_point_temperature = df.dew_point_temperature
@@ -260,112 +251,47 @@ class Weather(object):
         self.albedo = df.albedo
         self.liquid_precipitation_depth = df.liquid_precipitation_depth
         self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
+        # self.df = df
+
+        # Calculate soil temperatures
+        annual_ground_temperature_at_depth(self, depth=0.5)
+
+        # Interpolate ground temperatures from loaded weatherfile
+        weatherfile_ground_temperatures(self)
 
         # Calculate pedestrian height wind speed (at 1.5m above ground)
-        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index, data=[
-            wind_speed_at_height(source_wind_speed=i, source_wind_height=10, target_wind_height=1.5) for i
-            in self.wind_speed])
-        self.df = pd.concat([self.df, self.pedestrian_wind_speed], axis=1)
-
-        # Get the ground temperatures from the EPW file per month
-        g_temps = {}
-        for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], 16))):
-            g_temps[float(n)] = [float(j) for j in i[4:]]
-        temp_ground_temperature = pd.DataFrame.from_dict(g_temps)
-        temp_ground_temperature.index = pd.Series(index=self.index).resample("MS").mean().index
-        temp_ground_temperature = pd.concat([pd.DataFrame(index=self.index), temp_ground_temperature], axis=1)
-        temp_ground_temperature.columns = ["ground_temperature_0.5m", "ground_temperature_2m", "ground_temperature_4m"]
-        temp_ground_temperature.iloc[-1, :] = temp_ground_temperature.iloc[0, :]  # Assign start temperature to last datetime
-        temp_ground_temperature.interpolate(inplace=True)  # Fill in the gaps
-        self.ground_temperature_1 = temp_ground_temperature["ground_temperature_0.5m"]
-        self.ground_temperature_2 = temp_ground_temperature["ground_temperature_2m"]
-        self.ground_temperature_3 = temp_ground_temperature["ground_temperature_4m"]
-        self.df = pd.concat([self.df, temp_ground_temperature], axis=1)
+        pedestrian_wind_speed(self)
 
         # Run the solar position calculations
-        sol = sun_position(self.index, self.latitude, self.longitude)
-        self.solar_apparent_zenith_angle = sol.solar_apparent_zenith_angle
-        self.solar_zenith_angle = sol.solar_zenith_angle
-        self.solar_apparent_elevation_angle = sol.solar_apparent_elevation_angle
-        self.solar_elevation_angle = sol.solar_elevation_angle
-        self.solar_azimuth_angle = sol.solar_azimuth_angle
-        self.solar_equation_of_time = sol.solar_equation_of_time
-        self.df = pd.concat([self.df, sol], axis=1)
+        annual_sun_position(self)
 
         # Run the psychrometric calculations
-        psych = psychrometric_calculations(self.dry_bulb_temperature, self.relative_humidity, self.atmospheric_station_pressure)
-        psych.index = self.index
-        self.humidity_ratio = psych.humidity_ratio
-        self.wet_bulb_temperature = psych.wet_bulb_temperature
-        self.partial_vapour_pressure_moist_air = psych.partial_vapour_pressure_moist_air
-        self.enthalpy = psych.enthalpy
-        self.specific_volume_moist_air = psych.specific_volume_moist_air
-        self.degree_of_saturation = psych.degree_of_saturation
-        self.df = pd.concat([self.df, psych], axis=1)
+        annual_psychrometrics(self)
 
+        # Generate the sky matrix
         if sky_matrix:
+            generate_sky_matrix(self)
 
-            # Specify sky patch sub-division method - Reinhart by default and hard-coded here
-            self.reinhart = True
+        # Run the Solar adjusted MRT method
+        mrt_solar_adjusted(self)
 
-            # Create WEA file if it doesn't exist
-            if self.wea_file is None:
-                self.wea_file = self.to_wea()
-                self.direct_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".dirmtx")
-                self.diffuse_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".diffmtx")
+        # Run the openfield MRT method
+        mrt_openfield(self)
 
-            # Load pre-existing sky matrices if they exist. Currently no checks here for if the matrix matehces the weatherfile (other than
-            if reuse_matrix:
+        # Run the UTCI using the openfield MRT values
+        # utci_openfield(self)
 
-                try:
-                    self.direct_sky_matrix = load_sky_matrix(self.direct_sky_matrix_path, reinhart=self.reinhart)
-                    self.diffuse_sky_matrix = load_sky_matrix(self.diffuse_sky_matrix_path, reinhart=self.reinhart)
-                    self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
-                    print("Direct and diffuse sky matrices loaded")
-                except Exception as e:
-                    raise ValueError("Looks like you haven't got a sky matrix to load - try creating one first!\n\n{0:}".format(e))
-            else:
-                # Generate sky matrices
-                self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = sky_matrix_calculations(self.wea_file, reinhart=self.reinhart)
-
-            # Set the other descriptors for the sky patches
-            self.patch_centroids = REINHART_PATCH_CENTROIDS if self.reinhart else TREGENZA_PATCH_CENTROIDS
-            self.patch_vectors = REINHART_PATCH_VECTORS if self.reinhart else TREGENZA_PATCH_VECTORS
-            self.patch_count = REINHART_PATCH_COUNT if self.reinhart else TREGENZA_PATCH_COUNT
+        # Run the UTCI using the solar adjusted MRT values
+        # utci_solar_adjusted(self)
 
         # if openfield_mrt:
         #     if self.total_sky_matrix is None:
         #         self.sky_matrix(reinhart=True)
-        #     self.mean_radiant_temperature_of()
+        #
         # if sa_mrt:
         #     self.mean_radiant_temperature_sa()
 
         return self
-
-    def to_csv(self, file_path=None):
-        """
-        Write DataFrame containing hourly annual weather variables, and derived variables to a CSV file.
-
-        Parameters
-        ----------
-        file_path : str
-            The file path into which the annual hourly values will be written. If no value is passed, the output
-            will be written to the same directory as the input weather-file.
-
-        Returns
-        -------
-        str
-            Path to the serialised CSV file.
-
-        """
-        if self.df is None:
-            raise Exception('No data is available, try loading some first!')
-        if file_path is None:
-            file_path = pathlib.Path(self.file_path).with_suffix(".csv")
-        self.df.to_csv(file_path)
-        self.csv_file = str(file_path)
-        print("CSV file created: {0:}".format(self.csv_file))
-        return self.csv_file
 
     def to_wea(self, file_path=None):
         """
@@ -401,45 +327,37 @@ class Weather(object):
         print("WEA file created: {0:}".format(self.wea_file))
         return self.wea_file
 
-    def mean_radiant_temperature_openfield(self):
-        mrt_openfield = mean_radiant_temperature_of(self)
-        mrt_openfield.index = self.index
-        mrt_openfield.name = "mean_radiant_temperature_openfield"
-        self.mean_radiant_temperature_of = mrt_openfield
-        self.df = pd.concat([self.df, self.mean_radiant_temperature_of], axis=1)
+    def to_df(self):
+        df = pd.concat([getattr(self, name) for name in dir(self) if type(getattr(self, name)).__name__ == "Series"], axis=1)
+        return df
 
-    def mean_radiant_temperature_solar_adjusted(self):
-        mrt_solar_adjusted = mean_radiant_temperature_sa(self)
-        mrt_solar_adjusted.index = self.index
-        mrt_solar_adjusted.name = "mean_radiant_temperature_solar_adjusted"
-        self.mean_radiant_temperature_sa = mrt_solar_adjusted
-        self.df = pd.concat([self.df, self.mean_radiant_temperature_sa], axis=1)
+    def to_csv(self, file_path=None):
+        """
+        Write DataFrame containing hourly annual weather variables, and derived variables to a CSV file.
 
-    def utci_solar_adjusted(self):
-        self.utci_sa = self.df.apply(
-            lambda x: universal_thermal_climate_index(
-                air_temperature=x.dry_bulb_temperature,
-                mean_radiant_temperature=x.mean_radiant_temperature_solar_adjusted,
-                air_velocity=x.pedestrian_wind_speed,
-                relative_humidity=x.relative_humidity,
-            ), axis=1
-        )
-        self.utci_sa.name = "utci_sa"
-        self.df = pd.concat([self.df, self.utci_sa], axis=1)
-        print("Universal thermal climate index calculations successful (SA)")
+        Parameters
+        ----------
+        file_path : str
+            The file path into which the annual hourly values will be written. If no value is passed, the output
+            will be written to the same directory as the input weather-file.
 
-    def utci_openfield(self):
-        self.utci_of = self.df.apply(
-            lambda x: universal_thermal_climate_index(
-                air_temperature=x.dry_bulb_temperature,
-                mean_radiant_temperature=x.mean_radiant_temperature_openfield,
-                air_velocity=x.pedestrian_wind_speed,
-                relative_humidity=x.relative_humidity,
-            ), axis=1
-        )
-        self.utci_of.name = "utci_of"
-        self.df = pd.concat([self.df, self.utci_of], axis=1)
-        print("Universal thermal climate index calculations successful (OF)")
+        Returns
+        -------
+        str
+            Path to the serialised CSV file.
+
+        """
+        df = self.to_df()
+        if file_path is None:
+            file_path = pathlib.Path(self.file_path).with_suffix(".csv")
+        df.to_csv(file_path)
+        self.csv_file = file_path
+        print("CSV file created: {0:}".format(self.csv_file))
+        return df
+
+    ######################
+    # Additional methods #
+    ######################
 
 
 # class Ground(object):

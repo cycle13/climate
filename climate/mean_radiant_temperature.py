@@ -6,11 +6,79 @@ from climate.helpers import *
 import numpy as np
 
 
-def mean_radiant_temperature_of(weather, ground_roughness="Medium rough", ground_emissivity=0.8, ground_absorptivity=0.6, ground_albedo=0.2):
+def fanger_solar_exposure(solar_azimuth_angle, solar_elevation_angle, posture=1):
+    # Sitting bivariate B-spline and its derivatives
+    sitting_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
+                        [0.42999558258469306, 0.49777802226651985, 0.2858541264803382, 0.2636331839991635,
+                         0.10059901058304405, 0.5904998653021177, 0.6393605287969937, 0.41177803047742195,
+                         0.16397939147762605, 0.1145630272512949, -0.07290688451711066, -0.0877360565501316,
+                         0.03719879969518147, 0.06771059788029093, 0.09444998526069391, 0.5573351684449549,
+                         0.6212235986152396, 0.3384990152297299, 0.25505266892999545, 0.1011441730110879,
+                         0.4432956571996788, 0.49809124858382825, 0.29471168936411446, 0.19682482035937438,
+                         0.10008130856803796], 4, 4]
+
+    # Standing bivariate B-spline and its derivatives
+    standing_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
+                         [0.365433469329803, 0.41471995039390336, 0.3539202584010255, 0.35205668670475776,
+                          0.21505967838173534, 0.5304745700779437, 0.6180584137541132, 0.11434859278048302,
+                          0.4862162611010728, 0.20252438358996272, -0.015147290187610778, 0.22189948439503024,
+                          0.6990946114268216, -0.000718703369787728, 0.22472889635480628, 0.5176922764465676,
+                          0.35055123160310636, -0.0032935618498728487, 0.3404006983313149, 0.19936403473400507,
+                          0.37870178660536147, 0.24613731159172733, 0.06300314787643235, 0.23364607863218287,
+                          0.2171651821703637], 4, 4]
+
+    # Convert inputs to 0-90, 0-180 range arrays
+    azimuth = np.where(solar_azimuth_angle < 180, solar_azimuth_angle, 360 - solar_azimuth_angle)
+    altitude = np.where(solar_elevation_angle < 0, 0, np.where(solar_elevation_angle > 90, 90 - solar_elevation_angle, solar_elevation_angle))
+
+    # Check for equal length arrays
+    if not len(azimuth) == len(altitude):
+        raise ValueError("Inputs should all be the same length")
+
+    if posture == 0:
+        solar_exposure = np.array([bisplev(azimuth[i], altitude[i], sitting_bisplrep) for i in range(len(azimuth))])
+    elif posture == 1:
+        solar_exposure = np.array([bisplev(azimuth[i], altitude[i], standing_bisplrep) for i in range(len(azimuth))])
+    else:
+        solar_exposure = None
+
+    return solar_exposure
+
+
+def solar_adjusted_mean_radiant_temperature(dry_bulb_temperature, diffuse_horizontal_radiation, global_horizontal_radiation, direct_normal_radiation, solar_azimuth, solar_altitude, clothing_absorbtivity=0.7, ground_reflectivity=0.4, shading_transmissivity=1.0):
+    fraction_body_exposed_radiation = 0.71  # Fraction of the body visible to radiation. 0.725 is for standing, 0.696 for sitting, 0.68 for lying down. A nominal value of 0.71 is used.
+    radiative_heat_transfer_coefficient = 6.012  # A good guess at the radiative heat transfer coefficient
+    projected_area_fraction = fanger_solar_exposure(solar_azimuth, solar_altitude, posture=1)
+
+    effective_radiant_flux = ((0.5 * fraction_body_exposed_radiation * (
+            diffuse_horizontal_radiation + (global_horizontal_radiation * ground_reflectivity)) + (
+                                       fraction_body_exposed_radiation * projected_area_fraction * direct_normal_radiation)) * shading_transmissivity) * (
+                                     clothing_absorbtivity / 0.95)
+
+    mean_radiant_temperature_delta = (
+                effective_radiant_flux / (fraction_body_exposed_radiation * radiative_heat_transfer_coefficient))
+
+    solar_adjusted_mrt = dry_bulb_temperature + mean_radiant_temperature_delta
+
+    return solar_adjusted_mrt
+
+
+def mrt_solar_adjusted(self, clothing_absorbtivity=0.7, ground_reflectivity=0.4, shading_transmissivity=1.0):
+
+    mrt_sa = solar_adjusted_mean_radiant_temperature(
+        self.dry_bulb_temperature, self.diffuse_horizontal_radiation, self.global_horizontal_radiation, self.direct_normal_radiation, self.solar_azimuth_angle,
+                                            self.solar_elevation_angle, clothing_absorbtivity=clothing_absorbtivity, ground_reflectivity=ground_reflectivity,
+                                            shading_transmissivity=shading_transmissivity)
+    self.mean_radiant_temperature_solar_adjusted = pd.Series(index=self.index, name="mean_radiant_temperature_solar_adjusted", data=mrt_sa)
+    print("Mean radiant temperature (solar adjusted) calculations successful")
+    return self.mean_radiant_temperature_solar_adjusted
+
+
+def mean_radiant_temperature_of(self, ground_roughness="Medium rough", ground_emissivity=0.8, ground_absorptivity=0.6, ground_albedo=0.2):
     ground_thickness = 1
-    sky_emissivity = calc_sky_emissivity(weather.dew_point_temperature, weather.total_sky_cover / 10)
-    ground_convective_heat_transfer_coefficient = simple_combined_exterior_heat_transfer_coefficient(ground_roughness, weather.pedestrian_wind_speed)
-    ground_k_value = np.interp(np.power(weather.relative_humidity, 3), [0, 1e6], [0.33, 1.4])  # TODO: Check what this value is and where it comes from!
+    sky_emissivity = calc_sky_emissivity(self.dew_point_temperature, self.total_sky_cover / 10)
+    ground_convective_heat_transfer_coefficient = simple_combined_exterior_heat_transfer_coefficient(ground_roughness, self.pedestrian_wind_speed)
+    ground_k_value = np.interp(np.power(self.relative_humidity, 3), [0, 1e6], [0.33, 1.4])  # TODO: Check what this value is and where it comes from!
 
     # # Calculate ground temperature (using https://www.cableizer.com/blog/post/soil-temperature-calculator/)
     # ground_temperature = pd.Series(name="ground_temperature", index=self.index, data=[
@@ -19,13 +87,13 @@ def mean_radiant_temperature_of(weather, ground_roughness="Medium rough", ground
     #                                 soil_diffusivity=0.01) for j in [i if i > 0 else i + 365 for i in (
     #                 self.index - self.dry_bulb_temperature.resample(
     #             "1D").mean().idxmin()).total_seconds() / 86400]])
-    ground_temperature = weather.ground_temperature_1
+    ground_temperature = self.ground_temperature_500_weatherfile
 
     # Generate sample vectors for radiation from the sky
     sample_vectors, sample_vectors_altitude, sample_vectors_is_sky = generate_numerous_vectors(samples=1000)
 
     # Find the closest patch value indices and distances from the sample vectors
-    sample_vector_closest_patch_vector_distances, sample_vector_closest_patch_vector_indices = closest_point(sample_vectors, weather.patch_centroids, n_closest=3)
+    sample_vector_closest_patch_vector_distances, sample_vector_closest_patch_vector_indices = closest_point(sample_vectors, self.patch_centroids, n_closest=3)
 
     # Calculate the sky view factors for each of the sample vectors.
     sky_view_factors = sky_view_factor(sample_vectors_altitude, sample_vectors_is_sky)
@@ -400,7 +468,7 @@ def mean_radiant_temperature_of(weather, ground_roughness="Medium rough", ground
 
     # Calculate the sky radiation values received by each sample vector
     sample_vector_radiation = []
-    for total_sky_matrix_hour in weather.total_sky_matrix:
+    for total_sky_matrix_hour in self.total_sky_matrix:
         n_values = (total_sky_matrix_hour[sample_vector_closest_patch_vector_indices] * sample_vector_closest_patch_vector_distances).sum(axis=1) / sample_vector_closest_patch_vector_distances.sum(axis=1)
         n_values = np.where(sample_vectors[:, 2] <= 0, 0, n_values)  # Replace values where vectors are below ground
         total_sky_matrix_hour_radiation = sum(total_sky_matrix_hour)  # Total hourly radiation from original sky matrix
@@ -418,13 +486,13 @@ def mean_radiant_temperature_of(weather, ground_roughness="Medium rough", ground
     ground_reflected_sky_radiation = (np.power(ground_albedo, ray_intersected_points) * sky_sourced_radiation).sum(axis=1)
 
     # Calculate ground surface temperature
-    ground_surface_temperature = surface_temperature(weather.dry_bulb_temperature, ground_temperature, ground_1m2_radiation, ground_emissivity,
-                        ground_absorptivity, ground_k_value, ground_thickness,
-                        ground_convective_heat_transfer_coefficient)
+    ground_surface_temperature = surface_temperature(self.dry_bulb_temperature, ground_temperature, ground_1m2_radiation, ground_emissivity,
+                                                     ground_absorptivity, ground_k_value, ground_thickness,
+                                                     ground_convective_heat_transfer_coefficient)
 
     # Calculate atmospheric radiation
     SVF = 1
-    atmospheric_sky_radiation = sky_emissivity * weather.horizontal_infrared_radiation_intensity * SVF
+    atmospheric_sky_radiation = sky_emissivity * self.horizontal_infrared_radiation_intensity * SVF
 
     # Calculate solar radiation
     ap = 0.7
@@ -437,140 +505,15 @@ def mean_radiant_temperature_of(weather, ground_roughness="Medium rough", ground
 
     # Calculate experienced Mean Radiant Temperature
     mean_radiant_temperature = np.power(((atmospheric_sky_radiation + atmospheric_solar_radiation + ground_radiation) / STEFAN_BOLTZMANN_CONSTANT), 0.25) - KELVIN
-    print("Open field mean radiant temperature calculations successful")
     return mean_radiant_temperature
 
-def mean_radiant_temperature_sa(weather, clothing_absorbtivity=0.7, ground_reflectivity=0.4, shading_transmissivity=1.0):
 
-   def convert_altitude(altitude):
-       """
-       Converts an altitude (from 0 below, to 180 above), to a range between 0 at horizon to 90 at directly above
+def mrt_openfield(self):
+    mrt_openfield = mean_radiant_temperature_of(self)
+    mrt_openfield.index = self.index
+    mrt_openfield.name = "mean_radiant_temperature_openfield"
+    self.mean_radiant_temperature_openfield = mrt_openfield
+    # self.df = pd.concat([self.df, self.mean_radiant_temperature_openfield], axis=1).drop_duplicates(keep="last")
+    print("Mean radiant temperature (openfield) calculations successful")
+    return self.mean_radiant_temperature_openfield
 
-       :param altitude: Original altitude value
-       :return altitude_adjusted: Adjusted altitude value
-       """
-       if altitude < 0:
-           altitude_adjusted = 0
-       elif altitude > 90:
-           altitude_adjusted = 90 - altitude
-       else:
-           altitude_adjusted = altitude
-       return altitude_adjusted
-
-   def convert_azimuth(azimuth):
-       """
-       Converts an azimuth (from 0 at North, moving clockwise), to a range between 0 at North and 180 South (both clock and anti-clockwise)
-
-       :param azimuth: Original azimuth value
-       :return azimuth_adjusted: Adjusted azimuth value
-       """
-       if azimuth < 180:
-           azimuth_adjusted = azimuth
-       elif azimuth > 180:
-           azimuth_adjusted = 360 - azimuth
-       return azimuth_adjusted
-
-   def fanger_solar_exposure(azimuth, altitude, posture=1):
-       """
-       Determine the exposure factor based on human posture and sun position
-
-       :param azimuth: Solar azimuth, between 0 and 180 (inclusive)
-       :type azimuth
-       :param altitude: Solar altitude, between 0 and 90 (inclusive)
-       :type altitude
-       :param posture: Human posture. 0=Sitting, 1=Standing
-       :type posture: int
-       :return: solar exposure
-       :rtype
-       """
-
-       # Following lines commented dealt with sun position range issues. convert_azimuth() and convert()_altitude now handle this.
-       # if azimuth < 0:
-       #     raise ValueError('Azimuth is outside the expected range of 0 to 180.')
-       # elif azimuth > 180:
-       #     raise ValueError('Azimuth is outside the expected range of 0 to 180.')
-       # elif altitude < 0:
-       #     raise ValueError('Altitude is outside the expected range of 0 to 90.')
-       # elif altitude > 90:
-       #     raise ValueError('Altitude is outside the expected range of 0 to 90.')
-
-       # Sitting bivariate B-spline and its derivatives
-       sitting_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
-                           [0.42999558258469306, 0.49777802226651985, 0.2858541264803382, 0.2636331839991635,
-                            0.10059901058304405, 0.5904998653021177, 0.6393605287969937, 0.41177803047742195,
-                            0.16397939147762605, 0.1145630272512949, -0.07290688451711066, -0.0877360565501316,
-                            0.03719879969518147, 0.06771059788029093, 0.09444998526069391, 0.5573351684449549,
-                            0.6212235986152396, 0.3384990152297299, 0.25505266892999545, 0.1011441730110879,
-                            0.4432956571996788, 0.49809124858382825, 0.29471168936411446, 0.19682482035937438,
-                            0.10008130856803796], 4, 4]
-
-       # Standing bivariate B-spline and its derivatives
-       standing_bisplrep = [[0, 0, 0, 0, 0, 180, 180, 180, 180, 180], [0, 0, 0, 0, 0, 90, 90, 90, 90, 90],
-                            [0.365433469329803, 0.41471995039390336, 0.3539202584010255, 0.35205668670475776,
-                             0.21505967838173534, 0.5304745700779437, 0.6180584137541132, 0.11434859278048302,
-                             0.4862162611010728, 0.20252438358996272, -0.015147290187610778, 0.22189948439503024,
-                             0.6990946114268216, -0.000718703369787728, 0.22472889635480628, 0.5176922764465676,
-                             0.35055123160310636, -0.0032935618498728487, 0.3404006983313149, 0.19936403473400507,
-                             0.37870178660536147, 0.24613731159172733, 0.06300314787643235, 0.23364607863218287,
-                             0.2171651821703637], 4, 4]
-
-       solar_exposure = None
-       if posture == 0:
-           solar_exposure = bisplev(convert_azimuth(azimuth), convert_altitude(altitude), sitting_bisplrep)
-       elif posture == 1:
-           solar_exposure = bisplev(convert_azimuth(azimuth), convert_altitude(altitude), standing_bisplrep)
-
-       return solar_exposure
-
-   def solar_adjusted_mean_radiant_temperature(dry_bulb_temperature, diffuse_horizontal_radiation,
-                                               global_horizontal_radiation, direct_normal_radiation,
-                                               solar_azimuth, solar_altitude,
-                                               clothing_absorbtivity=clothing_absorbtivity, ground_reflectivity=ground_reflectivity,
-                                               shading_transmissivity=shading_transmissivity):
-       """
-       This function is based on the ladybug method by Mostapha Roudsari, building on formulas translating solar radiation
-       into an effective radiant field and solar-adjusted mean radiant temperature. For further details on this
-       approximation, see Arens, Edward; Huang, Li; Hoyt, Tyler; Zhou, Xin; Shiavon, Stefano. (2014). Modeling the comfort
-       effects of short-wave solar radiation indoors.  Indoor Environmental Quality (IEQ). http://escholarship.org/uc/item/89m1h2dg#page-4
-       :param dry_bulb_temperature: Dry-bulb temperature
-       :param diffuse_horizontal_radiation: Diffuse solar horizontal radiation
-       :param global_horizontal_radiation: Global solar horizontal radiation
-       :param direct_normal_radiation: Direct solar normal radiation
-       :param solar_azimuth: Solar azimuth
-       :param solar_altitude: Solar altitude
-       :param clothing_absorbtivity: The fraction of solar radiation absorbed by the human body. The default is set to 0.7 for (average/brown) skin and average clothing. Increase this value for darker skin or darker clothing.
-       :param ground_reflectivity:  The fraction of solar radiation reflected off of the ground. By default, this is set to 0.4, characteristic of concrete paving. 0.25 would correspond to outdoor grass or dry bare soil.
-       :param shading_transmissivity: The fraction of shading transmissivity. exposed=1, shaded=0.
-       :return:
-       """
-       # TODO: Add error handling, range and type checking
-       if solar_altitude <= 0:
-           solar_adjusted_mrt = dry_bulb_temperature
-       else:
-           fraction_body_exposed_radiation = 0.71  # Fraction of the body visible to radiation. 0.725 is for standing, 0.696 for sitting, 0.68 for lying down. A nominal value of 0.71 is used.
-           radiative_heat_transfer_coefficient = 6.012  # A good guess at the radiative heat transfer coefficient
-           projected_area_fraction = fanger_solar_exposure(solar_azimuth, solar_altitude, posture=1)
-           effective_radiant_flux = ((0.5 * fraction_body_exposed_radiation * (
-                   diffuse_horizontal_radiation + (global_horizontal_radiation * ground_reflectivity)) + (
-                                              fraction_body_exposed_radiation * projected_area_fraction * direct_normal_radiation)) * shading_transmissivity) * (
-                                            clothing_absorbtivity / 0.95)
-           mean_radiant_temperature_delta = (
-                   effective_radiant_flux / (fraction_body_exposed_radiation * radiative_heat_transfer_coefficient))
-           solar_adjusted_mrt = dry_bulb_temperature + mean_radiant_temperature_delta
-       return solar_adjusted_mrt
-
-   mean_radiant_temperature = weather.df.apply(
-       lambda x: solar_adjusted_mean_radiant_temperature(
-           dry_bulb_temperature=x.dry_bulb_temperature,
-           direct_normal_radiation=x.direct_normal_radiation,
-           diffuse_horizontal_radiation=x.diffuse_horizontal_radiation,
-           global_horizontal_radiation=x.global_horizontal_radiation,
-           solar_altitude=x.solar_elevation_angle,
-           solar_azimuth=x.solar_azimuth_angle,
-           ground_reflectivity=0.4,
-           clothing_absorbtivity=0.7,
-           shading_transmissivity=1
-       ), axis=1
-   )
-   print("Solar adjusted mean radiant temperature calculations successful")
-   return mean_radiant_temperature

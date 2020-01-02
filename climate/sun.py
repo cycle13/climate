@@ -35,6 +35,18 @@ def sun_position(datetime, latitude, longitude):
     return solar_metrics
 
 
+def annual_sun_position(self):
+    sol = sun_position(self.index, self.latitude, self.longitude)
+    self.solar_apparent_zenith_angle = sol.solar_apparent_zenith_angle
+    self.solar_zenith_angle = sol.solar_zenith_angle
+    self.solar_apparent_elevation_angle = sol.solar_apparent_elevation_angle
+    self.solar_elevation_angle = sol.solar_elevation_angle
+    self.solar_azimuth_angle = sol.solar_azimuth_angle
+    self.solar_equation_of_time = sol.solar_equation_of_time
+    print("Sun position calculations successful")
+    return self.solar_apparent_zenith_angle,  self.solar_zenith_angle, self.solar_apparent_elevation_angle, self.solar_elevation_angle, self.solar_azimuth_angle, self.solar_equation_of_time
+
+
 def gendaymtx(wea_file, direct=True, reinhart=False):
     """
     Run the Radiance Gendaymtx program from an input WEA file.
@@ -142,3 +154,34 @@ def sky_matrix_calculations(wea_file, reinhart=False):
     total_sky_matrix = direct_sky_matrix + diffuse_sky_matrix
 
     return direct_sky_matrix, diffuse_sky_matrix, total_sky_matrix
+
+
+def generate_sky_matrix(self, reuse_matrix=False):
+    # Specify sky patch sub-division method - Reinhart by default and hard-coded here
+    self.reinhart = True
+
+    # Create WEA file if it doesn't exist
+    if self.wea_file is None:
+        self.wea_file = self.to_wea()
+        self.direct_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".dirmtx")
+        self.diffuse_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".diffmtx")
+
+    # Load pre-existing sky matrices if they exist. Currently no checks here for if the matrix matehces the weatherfile (other than
+    if reuse_matrix:
+
+        try:
+            self.direct_sky_matrix = load_sky_matrix(self.direct_sky_matrix_path, reinhart=self.reinhart)
+            self.diffuse_sky_matrix = load_sky_matrix(self.diffuse_sky_matrix_path, reinhart=self.reinhart)
+            self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
+            print("Direct and diffuse sky matrices loaded")
+        except Exception as e:
+            raise ValueError("Looks like you haven't got a sky matrix to load - try creating one first!\n\n{0:}".format(e))
+    else:
+        # Generate sky matrices
+        self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = sky_matrix_calculations(self.wea_file,
+                                                                                                         reinhart=self.reinhart)
+
+    # Set the other descriptors for the sky patches
+    self.patch_centroids = REINHART_PATCH_CENTROIDS if self.reinhart else TREGENZA_PATCH_CENTROIDS
+    self.patch_vectors = REINHART_PATCH_VECTORS if self.reinhart else TREGENZA_PATCH_VECTORS
+    self.patch_count = REINHART_PATCH_COUNT if self.reinhart else TREGENZA_PATCH_COUNT

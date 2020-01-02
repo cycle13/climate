@@ -13,6 +13,72 @@ import pandas as pd
 import numpy as np
 
 
+def plot_heatmap_new(pandas_series, cmap='Greys', tone_color="k", title=None, vrange=None):
+
+    # Instantiate figure
+    fig, ax = plt.subplots(1, 1, figsize=(15, 5))
+
+    # Load data
+    pandas_series = pandas_series.to_frame()
+
+    # Remove timezone-awareness
+    try:
+        pandas_series.index = pandas_series.index.tz_convert(None)
+    except Exception as e:
+        raise e
+
+    # Reshape data into time/day matrix
+    ll = pandas_series.pivot_table(columns=pandas_series.index.date, index=pandas_series.index.time).values[::-1]
+
+    # Plot data
+    heatmap = ax.imshow(
+        ll,
+        extent=[mdates.date2num(pandas_series.index.min()), mdates.date2num(pandas_series.index.max()), 726449, 726450],
+        aspect='auto',
+        cmap=cmap,
+        interpolation='none',
+        vmin=vrange[0] if vrange is not None else None,
+        vmax=vrange[-1] if vrange is not None else None,
+    )
+
+    # Axis formatting
+    ax.xaxis_date()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+    ax.yaxis_date()
+    ax.yaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax.invert_yaxis()
+    ax.tick_params(labelleft=True, labelright=True, labelbottom=True)
+    plt.setp(ax.get_xticklabels(), ha='left', color=tone_color)
+    plt.setp(ax.get_yticklabels(), color=tone_color)
+
+    # Spine formatting
+    [ax.spines[spine].set_visible(False) for spine in ['top', 'bottom', 'left', 'right']]
+
+    # Grid formatting
+    ax.grid(b=True, which='major', color='white', linestyle=':', alpha=1)
+
+    # Colorbar formatting
+    cb = fig.colorbar(heatmap, orientation='horizontal', drawedges=False, fraction=0.05, aspect=100, pad=0.075)
+    plt.setp(plt.getp(cb.ax.axes, 'xticklabels'), color=tone_color)
+    cb.outline.set_visible(False)
+
+    # Add title if provided
+    if title is not None:
+        plt.title(title, color=tone_color, y=1.01)
+
+    # Tidy plot
+    plt.tight_layout()
+
+    # # Save figure
+    # if save:
+    #     save_path.parent.mkdir(parents=True, exist_ok=True)
+    #     fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
+    #     print("Heatmap saved to {}".format(save_path))
+    # if close:
+    #     plt.close()
+
+    return fig
+
 def plot_heatmap(weather_object, variable, cmap='Greys', close=True, save=False):
     # Construct the save_path and create directory if it doesn't exist
     save_path = weather_object.file_path.parent / "{}_Plot".format(weather_object.file_path.stem) / "heatmap_{}.png".format(variable)

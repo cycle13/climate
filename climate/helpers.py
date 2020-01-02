@@ -139,56 +139,6 @@ def radiation_rose_values(rose_vectors, sky_dome_patch_normal_vectors, sky_dome_
     return np.array(rose_vector_result)
 
 
-def wind_speed_at_height(source_wind_speed, source_wind_height, target_wind_height, terrain_roughness="Airport runway areas", log_method=True):
-    """
-
-    :param source_wind_speed: The wind speed to be translated (m/s)
-    :param source_wind_height: The height at which the source wind speed was measured
-    :param target_wind_height: The height to which the source wind speed will be translated
-    :param terrain_roughness: A terrain roughness value from the European Wind Atlas, page 58, Figure 3.1: Roughness length, surface characteristics and roughness class.
-    :param log_method:
-    :return:
-    """
-    roughness = {
-        "City": 1,
-        "Forest": 0.8,
-        "Suburbs": 0.5,
-        "Shelter belts": 0.3,
-        "Many trees and/or bushes": 0.2,
-        "Farmland with closed appearance": 0.1,
-        "Farmland with open appearance": 0.05,
-        "Farmland with very few buildings, trees etc. airport areas with buildings and trees": 0.03,
-        "Airport runway areas": 0.01,
-        "Mown grass": 0.0075,
-        "Bare soil (smooth)": 0.005,
-        "Snow surfaces (smooth)": 0.001,
-        "Sand surfaces (smooth)": 0.0003,
-        "Water areas (lakes, fjords, open sea)": 0.0001
-    }
-
-    if source_wind_speed == 0:
-        return 0
-    if log_method:
-        return source_wind_speed * (math.log(target_wind_height / roughness[terrain_roughness]) / math.log(source_wind_height / roughness[terrain_roughness]))
-    wind_shear_exponent = 1 / 7
-    return source_wind_speed * ((target_wind_height / source_wind_height) ** wind_shear_exponent)
-
-
-def ground_temperature_at_depth(depth, annual_average_temperature, annual_temperature_range, days_since_coldest_day, soil_diffusivity=0.01):
-    soil_diffusivities = {
-        "Rock": 0.02,
-        "Wet clay": 0.015,
-        "Wet sand": 0.01,
-        "Dry clay": 0.002,
-        "Dry sand": 0.001
-    }
-
-    w = 2 * math.pi / 365
-    dd = math.sqrt(2 * soil_diffusivity / w)
-
-    return annual_average_temperature - (annual_temperature_range / 2) * math.exp(-depth / dd) * math.cos((w * days_since_coldest_day) - (depth / dd))
-
-
 def calc_sky_emissivity(dew_point_temperature, total_sky_cover):
     """
     Calculate the sky emissivity using the Clark-Allen method used by EnergyPlus.
