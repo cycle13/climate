@@ -1,69 +1,79 @@
+from climate.common.constants import time_of_year_mask
+from climate.common.helpers import angle_between
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-from climate.common.constants import time_of_year_mask
-from climate.common.helpers import angle_between
 
+def generate_radiation_rose_values(sky_matrix, patch_vectors, season_period="Annual", day_period="Daily", nsector=36):
+    # Filter and summate passed sky matrix by time (removing hours not to be included)
+    mask = np.array([time_of_year_mask[day_period], time_of_year_mask[season_period]]).all(axis=0)
+    filtered_rad = sky_matrix[mask]
+    cumulative_rad = filtered_rad.sum(axis=0)
 
-def plot_radiation_rose(self, save=False):
-
-    rose_angles = np.radians(np.arange(0, 360, 10))
+    # Calculate vectors into which patches will be binned
+    rose_angles = np.radians(np.linspace(0, 360, nsector, endpoint=False))
     radiation_rose_vectors = np.stack([-np.sin(rose_angles), np.cos(rose_angles), np.zeros(len(rose_angles))]).T
 
-    direct_values = self.direct_sky_matrix.sum(axis=0)
-    diffuse_values = self.diffuse_sky_matrix.sum(axis=0)
+    # Get the angle between each patch centroid and rose vector
+    vector_angles_top = []
+    for radiation_rose_vector in radiation_rose_vectors:
+        vector_angles_bottom = []
+        for patch_vector in patch_vectors:
+            vector_angles_bottom.append(angle_between(patch_vector, radiation_rose_vector, degrees=False))
+        vector_angles_top.append(vector_angles_bottom)
+    patch_rose_vector_angles = np.array(vector_angles_top)
 
-    direct_sky_radiation_rose_values = []
-    diffuse_sky_radiation_rose_values = []
-    for vec in radiation_rose_vectors:
-        direct_radiation = 0
-        diffuse_radiation = 0
-        for patch_number, patch_vector in enumerate(self.patch_vectors):
-            vector_angle = angle_between(patch_vector, vec, degrees=True)
-            if vector_angle < 90:
-                direct_radiation += direct_values[patch_number] * np.cos(np.radians(vector_angle))
-                diffuse_radiation += diffuse_values[patch_number] * np.cos(np.radians(vector_angle))
-        direct_sky_radiation_rose_values.append(direct_radiation)
-        diffuse_sky_radiation_rose_values.append(diffuse_radiation)
-    direct_sky_radiation_rose_values = np.array(direct_sky_radiation_rose_values)
-    diffuse_sky_radiation_rose_values = np.array(diffuse_sky_radiation_rose_values)
-    total_sky_radiation_rose_values = direct_sky_radiation_rose_values + diffuse_sky_radiation_rose_values
+    # Remove radiation beyond view of the radiation rose vector
+    te = cumulative_rad * np.cos(patch_rose_vector_angles)
+    radiation_rose_values = np.where(te.sum(axis=1) < 0, 0, te.sum(axis=1))
+    radiation_rose_values = np.roll(radiation_rose_values, -1)
 
-    max_val = total_sky_radiation_rose_values.max() / 1000
+    return rose_angles, radiation_rose_values
+
+
+def radiation_rose(self, season_period="Annual", day_period="Daily", n_sector=36, cmap=None, tone_color="k", same_scale=False, save=False):
+    # Create values to plot
+    rose_angles, dir_rad = generate_radiation_rose_values(self.direct_sky_matrix, self.patch_vectors, season_period=season_period,
+                                                          day_period=day_period, nsector=n_sector)
+    rose_angles, dif_rad = generate_radiation_rose_values(self.diffuse_sky_matrix, self.patch_vectors, season_period=season_period,
+                                                          day_period=day_period, nsector=n_sector)
+    tot_rad = dir_rad + dif_rad
+
+    max_val = tot_rad.max() / 1000
+
     figs = []
-    for tx, vals in {"Direct Radiation": direct_sky_radiation_rose_values,
-                     "Diffuse Radiation": diffuse_sky_radiation_rose_values,
-                     "Total Radiation": total_sky_radiation_rose_values}.items():
+    for tx, vals in {"Direct Radiation": dir_rad,
+                     "Diffuse Radiation": dif_rad,
+                     "Total Radiation": tot_rad}.items():
 
         # Construct the save_path and create directory if it doesn't exist
-        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "radiationrose_{}.png".format(
-            tx)
+        save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "radiationrose_{}_{}{}.png".format(
+            tx.replace(" Radiation", ""), season_period, day_period)
 
         vals /= 1000
-        colors = [cm.OrRd(i) for i in np.interp(vals, [min(vals), max(vals)], [0, 1])]
+        colors = [cm.get_cmap('OrRd')(i) if cmap is None else cm.get_cmap(cmap)(i) for i in np.interp(vals, [min(vals), max(vals)], [0, 1])]
         fig, ax = plt.subplots(1, 1, figsize=(6, 6), subplot_kw={'projection': "polar"})
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.bar(
             rose_angles[::-1],
             vals,
-            width=(np.pi * 2 / 37), zorder=5, bottom=0.0, color=colors, alpha=1, edgecolor="w",
-            linewidth=0)  # 37 to make the width slightly smaller
-        ax.set_ylim(0, max_val)
+            width=(np.pi * 2 / (n_sector + 1)) * 0.95, zorder=5, bottom=0.0, color=colors, alpha=1, edgecolor="w",
+            linewidth=0.1)
+        if same_scale:
+            ax.set_ylim(0, max_val)
         ax.spines['polar'].set_visible(False)
-        ax.set_xticklabels(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
-        ti = ax.set_title("{}\n{} - {} - {}".format(tx, self.city, self.country, self.station_id), color="k",
-                          loc="left", va="bottom", ha="left", fontsize="large", y=1)
+        ax.set_xticklabels(["N", "NE", "E", "SE", "S", "SW", "W", "NW"], color=tone_color)
+        plt.setp(ax.get_yticklabels(), color=tone_color)
+        ax.set_title("{} (W/m²) - {} - {}\n{} - {} - {}".format(tx, season_period, day_period, self.city, self.country, self.station_id), color=tone_color, loc="center", va="bottom", ha="center", fontsize="large", y=1)
         plt.tight_layout()
+        figs.append(fig)
 
-        # Save figure
         if save:
             save_path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
-            print("Radiation rose saved to {}".format(save_path))
-        if close:
-            plt.close()
-        figs.append(fig)
+            print("{0:} rose saved to {1:}".format(tx, save_path))
 
     return figs

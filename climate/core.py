@@ -135,7 +135,7 @@ class Weather(object):
         self.standard_effective_temperature_solar_adjusted = None
         self.standard_effective_temperature_openfield = None
 
-    def read(self, sky_matrix=False):
+    def read(self, sky_matrix=False, test=False):
         """
         Read EPW weather-file into weather object.
 
@@ -254,42 +254,43 @@ class Weather(object):
         self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
         # self.df = df
 
-        # Calculate soil temperatures
-        annual_ground_temperature_at_depth(self, depth=0.5)
-
-        # Interpolate ground temperatures from loaded weatherfile
-        weatherfile_ground_temperatures(self)
-
-        # Calculate pedestrian height wind speed (at 1.5m above ground)
-        pedestrian_wind_speed(self)
-
-        # Run the solar position calculations
-        annual_sun_position(self)
-
-        # Run the psychrometric calculations
-        annual_psychrometrics(self)
-
         # Generate the sky matrix
         if sky_matrix:
             generate_sky_matrix(self)
 
-        # Run the Solar adjusted MRT method
-        mrt_solar_adjusted(self)
+        if test:
+            # Calculate soil temperatures
+            annual_ground_temperature_at_depth(self, depth=0.5)
 
-        # Run the openfield MRT method
-        mrt_openfield(self)
+            # Interpolate ground temperatures from loaded weatherfile
+            weatherfile_ground_temperatures(self)
 
-        # Run the UTCI using the solar adjusted MRT values
-        utci_solar_adjusted(self)
+            # Calculate pedestrian height wind speed (at 1.5m above ground)
+            pedestrian_wind_speed(self)
 
-        # Run the UTCI using the openfield MRT values
-        utci_openfield(self)
+            # Run the solar position calculations
+            annual_sun_position(self)
 
-        # Run the SET using the solar adjusted MRT values
-        set_solar_adjusted(self)
+            # Run the psychrometric calculations
+            annual_psychrometrics(self)
 
-        # Run the SET using the openfield MRT values
-        set_openfield(self)
+            # # Run the Solar adjusted MRT method
+            # mrt_solar_adjusted(self)
+            #
+            # # Run the openfield MRT method
+            # mrt_openfield(self)
+            #
+            # # Run the UTCI using the solar adjusted MRT values
+            # utci_solar_adjusted(self)
+            #
+            # # Run the UTCI using the openfield MRT values
+            # utci_openfield(self)
+            #
+            # # Run the SET using the solar adjusted MRT values
+            # set_solar_adjusted(self)
+            #
+            # # Run the SET using the openfield MRT values
+            # set_openfield(self)
 
         return self
 
@@ -313,8 +314,8 @@ class Weather(object):
             raise Exception('No radiation data is available, try loading some first!')
         if file_path is None:
             file_path = pathlib.Path(self.file_path).with_suffix(".wea")
-        header = "place {0:}_{1:}\nlatitude {2:0.4f}\nlongitude {3:0.4f}\ntime_zone {4:0.2f}\nsite_elevation {5:0.2f}\nweather_data_file_units 1".format(
-            slugify(self.city), slugify(self.country), self.latitude, self.longitude, -self.time_zone / 15,
+        header = "place {0:}_{1:}\nlatitude {2:0.3f}\nlongitude {3:0.3f}\ntime_zone {4:0.2f}\nsite_elevation {5:0.1f}\nweather_data_file_units 1".format(
+            slugify(self.city), slugify(self.country), self.latitude, -self.longitude, -self.time_zone * 15,
             self.elevation)
         values = []
         for n, dt in enumerate(self.index):
