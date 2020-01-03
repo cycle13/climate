@@ -1,8 +1,28 @@
-from psychrolib import SetUnitSystem, SI, GetHumRatioFromRelHum, GetTWetBulbFromHumRatio, GetVapPresFromHumRatio, GetMoistAirEnthalpy, GetMoistAirVolume, GetDegreeOfSaturation
+from psychrochart.psychrolib_extra import GetTDryBulbFromMoistAirVolume
+from psychrolib import SetUnitSystem, SI, GetHumRatioFromRelHum, GetTWetBulbFromHumRatio, GetVapPresFromHumRatio, \
+    GetMoistAirEnthalpy, GetHumRatioFromEnthalpyAndTDryBulb, GetMoistAirVolume, GetDegreeOfSaturation, GetHumRatioFromVapPres, GetTDewPointFromVapPres, \
+    GetTDryBulbFromEnthalpyAndHumRatio, GetSatVapPres, GetTDryBulbFromMoistAirVolumeAndHumRatio, GetDryAirEnthalpy, GetSatAirEnthalpy
 import pandas as pd
 import numpy as np
 
 SetUnitSystem(SI)
+
+# Matricize computation methods
+humidity_ratio_from_vapor_pressure = np.vectorize(GetHumRatioFromVapPres)
+humidity_ratio_from_relative_humidity = np.vectorize(GetHumRatioFromRelHum)
+humidity_ratio_from_enthalpy = np.vectorize(GetHumRatioFromEnthalpyAndTDryBulb)
+dry_air_enthalpy = np.vectorize(GetDryAirEnthalpy)
+moist_air_enthalpy = np.vectorize(GetMoistAirEnthalpy)
+sat_air_enthalpy = np.vectorize(GetSatAirEnthalpy)
+moist_air_volume = np.vectorize(GetMoistAirVolume)
+dew_point_from_vapor_pressue = np.vectorize(GetTDewPointFromVapPres)
+dry_bulb_temperature_from_enthalpy = np.vectorize(GetTDryBulbFromEnthalpyAndHumRatio)
+dry_bulb_temperature_from_specific_volume = np.vectorize(GetTDryBulbFromMoistAirVolume)
+wet_bulb_temperature_from_humidity_ratio = np.vectorize(GetTWetBulbFromHumRatio)
+saturation_vapor_pressure = np.vectorize(GetSatVapPres)
+degree_of_saturation = np.vectorize(GetDegreeOfSaturation)
+vapor_pressure_from_humidity_ratio = np.vectorize(GetVapPresFromHumRatio)
+dry_bulb_temperature_from_moist_air_volume_and_humidity_ratio = np.vectorize(GetTDryBulbFromMoistAirVolumeAndHumRatio)
 
 def psychrometric_calculations(dry_bulb_temperature, relative_humidity, atmospheric_station_pressure):
     """
@@ -41,34 +61,15 @@ def psychrometric_calculations(dry_bulb_temperature, relative_humidity, atmosphe
     if not len(dry_bulb_temperature) == len(relative_humidity) == len(atmospheric_station_pressure):
         raise ValueError("Inputs should all be the same length")
 
-    # Wrap calculation methods to matricize computation
-    def humidity_ratio_from_relative_humidity(input_variables):
-        return GetHumRatioFromRelHum(input_variables[0], input_variables[1], input_variables[2])
-
-    def wet_bulb_temperature_from_humidity_ratio(input_variables):
-        return GetTWetBulbFromHumRatio(input_variables[0], input_variables[1], input_variables[2])
-
-    def vapour_pressure_from_humidity_ratio(input_variables):
-        return GetVapPresFromHumRatio(input_variables[0], input_variables[1])
-
-    def enthalpy_from_humidity_ratio(input_variables):
-        return GetMoistAirEnthalpy(input_variables[0], input_variables[1])
-
-    def specific_volume_moist_air_from_humidity_ratio(input_variables):
-        return GetMoistAirVolume(input_variables[0], input_variables[1], input_variables[2])
-
-    def degree_of_saturation_from_humidity_ratio(input_variables):
-        return GetDegreeOfSaturation(input_variables[0], input_variables[1], input_variables[2])
-
     # Calculate psychrometrics
-    humidity_ratio = np.apply_along_axis(humidity_ratio_from_relative_humidity, 0, np.array([dry_bulb_temperature, relative_humidity / 100, atmospheric_station_pressure]))
-    wet_bulb_temperature = np.apply_along_axis(wet_bulb_temperature_from_humidity_ratio, 0, np.array([dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure]))
-    partial_vapour_pressure_moist_air = np.apply_along_axis(vapour_pressure_from_humidity_ratio, 0, np.array([humidity_ratio, atmospheric_station_pressure]))
-    enthalpy = np.apply_along_axis(enthalpy_from_humidity_ratio, 0, np.array([dry_bulb_temperature, humidity_ratio]))
-    specific_volume_moist_air = np.apply_along_axis(specific_volume_moist_air_from_humidity_ratio, 0, np.array([dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure]))
-    degree_of_saturation = np.apply_along_axis(degree_of_saturation_from_humidity_ratio, 0, np.array([dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure]))
+    humidity_ratio = humidity_ratio_from_relative_humidity(dry_bulb_temperature, relative_humidity / 100, atmospheric_station_pressure)
+    wet_bulb_temperature = wet_bulb_temperature_from_humidity_ratio(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
+    partial_vapour_pressure_moist_air = vapor_pressure_from_humidity_ratio(humidity_ratio, atmospheric_station_pressure)
+    enthalpy = moist_air_enthalpy(dry_bulb_temperature, humidity_ratio)
+    specific_volume_moist_air = moist_air_volume(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
+    deg_saturation = degree_of_saturation(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
 
-    return humidity_ratio, wet_bulb_temperature, partial_vapour_pressure_moist_air, enthalpy, specific_volume_moist_air, degree_of_saturation
+    return humidity_ratio, wet_bulb_temperature, partial_vapour_pressure_moist_air, enthalpy, specific_volume_moist_air, deg_saturation
 
 
 def annual_psychrometrics(self):
