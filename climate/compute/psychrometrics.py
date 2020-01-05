@@ -1,9 +1,10 @@
-from psychrochart.psychrolib_extra import GetTDryBulbFromMoistAirVolume
-from psychrolib import SetUnitSystem, SI, GetHumRatioFromRelHum, GetTWetBulbFromHumRatio, GetVapPresFromHumRatio, \
+from psychrolib import SetUnitSystem, SI, GetHumRatioFromRelHum, GetTWetBulbFromRelHum, GetTWetBulbFromHumRatio, GetVapPresFromHumRatio, \
     GetMoistAirEnthalpy, GetHumRatioFromEnthalpyAndTDryBulb, GetMoistAirVolume, GetDegreeOfSaturation, GetHumRatioFromVapPres, GetTDewPointFromVapPres, \
     GetTDryBulbFromEnthalpyAndHumRatio, GetSatVapPres, GetTDryBulbFromMoistAirVolumeAndHumRatio, GetDryAirEnthalpy, GetSatAirEnthalpy
 import pandas as pd
 import numpy as np
+
+import psychrochart
 
 SetUnitSystem(SI)
 
@@ -17,8 +18,8 @@ sat_air_enthalpy = np.vectorize(GetSatAirEnthalpy)
 moist_air_volume = np.vectorize(GetMoistAirVolume)
 dew_point_from_vapor_pressue = np.vectorize(GetTDewPointFromVapPres)
 dry_bulb_temperature_from_enthalpy = np.vectorize(GetTDryBulbFromEnthalpyAndHumRatio)
-dry_bulb_temperature_from_specific_volume = np.vectorize(GetTDryBulbFromMoistAirVolume)
 wet_bulb_temperature_from_humidity_ratio = np.vectorize(GetTWetBulbFromHumRatio)
+wet_bulb_temperature_from_relative_humidity = np.vectorize(GetTWetBulbFromRelHum)
 saturation_vapor_pressure = np.vectorize(GetSatVapPres)
 degree_of_saturation = np.vectorize(GetDegreeOfSaturation)
 vapor_pressure_from_humidity_ratio = np.vectorize(GetVapPresFromHumRatio)

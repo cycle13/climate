@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from climate.compute.psychrometrics import humidity_ratio_from_vapor_pressure, humidity_ratio_from_relative_humidity, humidity_ratio_from_enthalpy, moist_air_enthalpy, moist_air_volume, dew_point_from_vapor_pressue, dry_bulb_temperature_from_enthalpy, dry_bulb_temperature_from_specific_volume, wet_bulb_temperature_from_humidity_ratio, saturation_vapor_pressure, degree_of_saturation, vapor_pressure_from_humidity_ratio
+from climate.compute.psychrometrics import humidity_ratio_from_vapor_pressure, humidity_ratio_from_relative_humidity, \
+    humidity_ratio_from_enthalpy, moist_air_enthalpy, moist_air_volume, dew_point_from_vapor_pressue, \
+    dry_bulb_temperature_from_enthalpy, \
+    wet_bulb_temperature_from_humidity_ratio, saturation_vapor_pressure, degree_of_saturation, \
+    vapor_pressure_from_humidity_ratio
 
 # TODO: Use methods from psychrochart for plotting of enthalpy, specific volume and wet-bulb curves
 
