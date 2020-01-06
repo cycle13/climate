@@ -23,32 +23,34 @@ def psychrometrics(Tdb_in, w_in, P):
     v: [m3/kga] specific volume
     """
     # Change units
-    c_air = 1006.   # [J/kg] air heat capacity, value from ASHRAE Fundamentals
+    c_air = 1006.  # [J/kg] air heat capacity, value from ASHRAE Fundamentals
     hlg = 2501000.  # [J/kg] latent heat, value from ASHRAE Fundamentals
-    cw  = 1860.     # [J/kg] value from ASHRAE Fundamentals
-    P = P/1000.     # convert from Pa to kPa
+    cw = 1860.  # [J/kg] value from ASHRAE Fundamentals
+    P = P / 1000.  # convert from Pa to kPa
 
     Tdb = Tdb_in - 273.15
     w = w_in
 
     # phi (RH) calculation from Tdb and w
-    Pw = (w*P)/(0.621945 + w)                             # partial pressure of water vapor
-    Pws = saturation_pressure(Tdb)                        # Get saturation pressure for given Tdb
-    phi = Pw/Pws*100.0
+    Pw = (w * P) / (0.621945 + w)  # partial pressure of water vapor
+    Pws = saturation_pressure(Tdb)  # Get saturation pressure for given Tdb
+    phi = Pw / Pws * 100.0
 
     # enthalpy calculation from Tdb and w
-    h = c_air*Tdb + w*(hlg+cw*Tdb)                      # [J kga-1]
+    h = c_air * Tdb + w * (hlg + cw * Tdb)  # [J kga-1]
 
     # specific volume calculation from Tdb and w
-    v = 0.287042 * (Tdb+273.15)*(1+1.607858*w)/P        # ?
+    v = 0.287042 * (Tdb + 273.15) * (1 + 1.607858 * w) / P  # ?
 
     # dew point calculation from w
-    _pw = (w*P)/(0.621945 + w) # water vapor partial pressure in kPa
+    _pw = (w * P) / (0.621945 + w)  # water vapor partial pressure in kPa
     alpha = log(_pw)
 
-    Tdp = 6.54 + 14.526*alpha + pow(alpha,2)*0.7389 + pow(alpha,3)*0.09486 + pow(_pw,0.1984)*0.4569  # valid for Tdp between 0 C and 93 C
+    Tdp = 6.54 + 14.526 * alpha + pow(alpha, 2) * 0.7389 + pow(alpha, 3) * 0.09486 + pow(_pw,
+                                                                                         0.1984) * 0.4569  # valid for Tdp between 0 C and 93 C
 
-    return  Tdb, w, phi, h, Tdp, v
+    return Tdb, w, phi, h, Tdp, v
+
 
 def saturation_pressure(Tdb_):
     T = Tdb_ + 273.15
@@ -57,19 +59,22 @@ def saturation_pressure(Tdb_):
     # log(-x) = log(x) + log(-1) = log(x) + i*pi
     # Python will throw an exception. Negative value occurs here if
     # simulation timestep (dtSim) is large, i.e 3600s.
-    _Pws = exp(-1*(5.8002206e3) / T+1.3914993 + (4.8640239e-2)*T*(-1.) + (4.1764768e-5)*pow(T,2) - (1.4452093e-8)*pow(T,3) + 6.5459673*log(T))  #in Pa
-    _Pws = _Pws/1000.                                                               # in kPa
+    _Pws = exp(-1 * (5.8002206e3) / T + 1.3914993 + (4.8640239e-2) * T * (-1.) + (4.1764768e-5) * pow(T, 2) - (
+        1.4452093e-8) * pow(T, 3) + 6.5459673 * log(T))  # in Pa
+    _Pws = _Pws / 1000.  # in kPa
     return _Pws
 
-def moist_air_density(P,Tdb,H):
+
+def moist_air_density(P, Tdb, H):
     # Moist air density [kgv/ m-3] given dry bulb temperature, humidity ratio, and pressure.
     # ASHRAE Fundamentals (2005) ch. 6 eqn. 28
     # ASHRAE Fundamentals (2009) ch. 1 eqn. 28
     # from: https://github.com/psychrometrics/Libraries/blob/master/Psychrometrics_SI.cpp
-    moist_air_density = P/(1000*0.287042*Tdb*(1.+1.607858*H))
+    moist_air_density = P / (1000 * 0.287042 * Tdb * (1. + 1.607858 * H))
     return moist_air_density
 
-def HumFromRHumTemp(RH,T,P):
+
+def HumFromRHumTemp(RH, T, P):
     # Derive Specific HUmidity [kgh20/kgn202] from RH, T and Pa
     # Saturation vapour pressure from ASHRAE
     C8 = -5.8002206e3
@@ -81,10 +86,11 @@ def HumFromRHumTemp(RH,T,P):
 
     T += 273.15
 
-    PWS = exp(C8/T + C9 + C10*T + C11 * pow(T,2) + C12 * pow(T,3) + C13 * log(T))
-    PW = RH*PWS/100.0        # Vapour pressure
-    W = 0.62198*PW/(P-PW)    # 4. Specific humidity
+    PWS = exp(C8 / T + C9 + C10 * T + C11 * pow(T, 2) + C12 * pow(T, 3) + C13 * log(T))
+    PW = RH * PWS / 100.0  # Vapour pressure
+    W = 0.62198 * PW / (P - PW)  # 4. Specific humidity
     return W
+
 
 """
 function psat = psat(temp,parameter)

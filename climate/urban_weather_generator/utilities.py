@@ -3,6 +3,7 @@ import os
 from csv import reader as csv_reader
 import sys
 
+
 def zeros(h, w):
     """create a (h x w) matrix of zeros.
 
@@ -39,6 +40,7 @@ def str2fl(x):
     Args:
         x: string or list of strings
     """
+
     def helper_to_fl(s_):
         """ deals with odd string imports converts to float"""
         if s_ == "":
@@ -52,10 +54,10 @@ def str2fl(x):
             return (s_)
 
     fl_lst = []
-    if isinstance(x[0], str):                # Check if list of strings, then sent to conversion
+    if isinstance(x[0], str):  # Check if list of strings, then sent to conversion
         for xi in range(len(x)):
             fl_lst.append(helper_to_fl(x[xi]))
-    elif isinstance(x[0], list):                    # Check if list of lists, then recurse
+    elif isinstance(x[0], list):  # Check if list of lists, then recurse
         for xi in range(len(x)):
             fl_lst.append(str2fl(x[xi]))
     else:
