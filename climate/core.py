@@ -135,7 +135,7 @@ class Weather(object):
         self.standard_effective_temperature_solar_adjusted = None
         self.standard_effective_temperature_openfield = None
 
-    def read(self, sky_matrix=False, test=False):
+    def read(self, sun_position=True, pedestrian_wind=True, psychrometrics=True, sky_matrix=False, ground_temp=False, mrt=False, utci=False, _set=False):
         """
         Read EPW weather-file into weather object.
 
@@ -221,76 +221,83 @@ class Weather(object):
             # Drop date/time columns
             df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
 
-        # Make loaded data accessible
-        self.data_source_and_uncertainty_flags = df.data_source_and_uncertainty_flags
-        self.dry_bulb_temperature = df.dry_bulb_temperature
-        self.dew_point_temperature = df.dew_point_temperature
-        self.relative_humidity = df.relative_humidity
-        self.atmospheric_station_pressure = df.atmospheric_station_pressure
-        self.extraterrestrial_horizontal_radiation = df.extraterrestrial_horizontal_radiation
-        self.extraterrestrial_direct_normal_radiation = df.extraterrestrial_direct_normal_radiation
-        self.horizontal_infrared_radiation_intensity = df.horizontal_infrared_radiation_intensity
-        self.global_horizontal_radiation = df.global_horizontal_radiation
-        self.direct_normal_radiation = df.direct_normal_radiation
-        self.diffuse_horizontal_radiation = df.diffuse_horizontal_radiation
-        self.global_horizontal_illuminance = df.global_horizontal_illuminance
-        self.direct_normal_illuminance = df.direct_normal_illuminance
-        self.diffuse_horizontal_illuminance = df.diffuse_horizontal_illuminance
-        self.zenith_luminance = df.zenith_luminance
-        self.wind_direction = df.wind_direction
-        self.wind_speed = df.wind_speed
-        self.total_sky_cover = df.total_sky_cover
-        self.opaque_sky_cover = df.opaque_sky_cover
-        self.visibility = df.visibility
-        self.ceiling_height = df.ceiling_height
-        self.present_weather_observation = df.present_weather_observation
-        self.present_weather_codes = df.present_weather_codes
-        self.precipitable_water = df.precipitable_water
-        self.aerosol_optical_depth = df.aerosol_optical_depth
-        self.snow_depth = df.snow_depth
-        self.days_since_last_snowfall = df.days_since_last_snowfall
-        self.albedo = df.albedo
-        self.liquid_precipitation_depth = df.liquid_precipitation_depth
-        self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
-        # self.df = df
+            # Make loaded data accessible
+            self.data_source_and_uncertainty_flags = df.data_source_and_uncertainty_flags
+            self.dry_bulb_temperature = df.dry_bulb_temperature
+            self.dew_point_temperature = df.dew_point_temperature
+            self.relative_humidity = df.relative_humidity
+            self.atmospheric_station_pressure = df.atmospheric_station_pressure
+            self.extraterrestrial_horizontal_radiation = df.extraterrestrial_horizontal_radiation
+            self.extraterrestrial_direct_normal_radiation = df.extraterrestrial_direct_normal_radiation
+            self.horizontal_infrared_radiation_intensity = df.horizontal_infrared_radiation_intensity
+            self.global_horizontal_radiation = df.global_horizontal_radiation
+            self.direct_normal_radiation = df.direct_normal_radiation
+            self.diffuse_horizontal_radiation = df.diffuse_horizontal_radiation
+            self.global_horizontal_illuminance = df.global_horizontal_illuminance
+            self.direct_normal_illuminance = df.direct_normal_illuminance
+            self.diffuse_horizontal_illuminance = df.diffuse_horizontal_illuminance
+            self.zenith_luminance = df.zenith_luminance
+            self.wind_direction = df.wind_direction
+            self.wind_speed = df.wind_speed
+            self.total_sky_cover = df.total_sky_cover
+            self.opaque_sky_cover = df.opaque_sky_cover
+            self.visibility = df.visibility
+            self.ceiling_height = df.ceiling_height
+            self.present_weather_observation = df.present_weather_observation
+            self.present_weather_codes = df.present_weather_codes
+            self.precipitable_water = df.precipitable_water
+            self.aerosol_optical_depth = df.aerosol_optical_depth
+            self.snow_depth = df.snow_depth
+            self.days_since_last_snowfall = df.days_since_last_snowfall
+            self.albedo = df.albedo
+            self.liquid_precipitation_depth = df.liquid_precipitation_depth
+            self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
+            # self.df = df
 
         # Generate the sky matrix
         if sky_matrix:
             generate_sky_matrix(self)
 
-        if test:
+        if ground_temp:
             # Calculate soil temperatures
             annual_ground_temperature_at_depth(self, depth=0.5)
 
             # Interpolate ground temperatures from loaded weatherfile
             weatherfile_ground_temperatures(self)
 
+        if pedestrian_wind:
             # Calculate pedestrian height wind speed (at 1.5m above ground)
             pedestrian_wind_speed(self)
 
+        if sun_position:
             # Run the solar position calculations
             annual_sun_position(self)
 
+        if psychrometrics:
             # Run the psychrometric calculations
             annual_psychrometrics(self)
 
-            # # Run the Solar adjusted MRT method
-            # mrt_solar_adjusted(self)
-            #
-            # # Run the openfield MRT method
-            # mrt_openfield(self)
-            #
-            # # Run the UTCI using the solar adjusted MRT values
-            # utci_solar_adjusted(self)
-            #
-            # # Run the UTCI using the openfield MRT values
-            # utci_openfield(self)
-            #
-            # # Run the SET using the solar adjusted MRT values
-            # set_solar_adjusted(self)
-            #
-            # # Run the SET using the openfield MRT values
-            # set_openfield(self)
+        if mrt:
+            # Run the Solar adjusted MRT method
+            mrt_solar_adjusted(self)
+
+            # Run the openfield MRT method
+            mrt_openfield(self)
+
+        if utci:
+
+            # Run the UTCI using the solar adjusted MRT values
+            utci_solar_adjusted(self)
+
+            # Run the UTCI using the openfield MRT values
+            utci_openfield(self)
+
+        if _set:
+            # Run the SET using the solar adjusted MRT values
+            set_solar_adjusted(self)
+
+            # Run the SET using the openfield MRT values
+            set_openfield(self)
 
         return self
 

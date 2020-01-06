@@ -1,13 +1,13 @@
-from climate.common.constants import *
-from climate.common.helpers import chunk
-
-import platform
 import pathlib
+import platform
 import subprocess
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from pvlib.solarposition import get_solarposition
+
+from climate.common.constants import *
+from climate.common.helpers import chunk
 
 
 def sun_position(datetime, latitude, longitude):
@@ -30,8 +30,10 @@ def sun_position(datetime, latitude, longitude):
 
     """
     solar_metrics = get_solarposition(datetime, latitude, longitude)
-    solar_metrics.rename(columns={'apparent_zenith': 'solar_apparent_zenith_angle', 'zenith': 'solar_zenith_angle', 'apparent_elevation': 'solar_apparent_elevation_angle', 'elevation': 'solar_elevation_angle', 'azimuth': 'solar_azimuth_angle', 'equation_of_time': 'solar_equation_of_time'}, inplace=True)
-    print("Solar position calculations successful")
+    solar_metrics.rename(columns={'apparent_zenith': 'solar_apparent_zenith_angle', 'zenith': 'solar_zenith_angle',
+                                  'apparent_elevation': 'solar_apparent_elevation_angle',
+                                  'elevation': 'solar_elevation_angle', 'azimuth': 'solar_azimuth_angle',
+                                  'equation_of_time': 'solar_equation_of_time'}, inplace=True)
     return solar_metrics
 
 
@@ -44,7 +46,7 @@ def annual_sun_position(self):
     self.solar_azimuth_angle = sol.solar_azimuth_angle
     self.solar_equation_of_time = sol.solar_equation_of_time
     print("Sun position calculations successful")
-    return self.solar_apparent_zenith_angle,  self.solar_zenith_angle, self.solar_apparent_elevation_angle, self.solar_elevation_angle, self.solar_azimuth_angle, self.solar_equation_of_time
+    return self.solar_apparent_zenith_angle, self.solar_zenith_angle, self.solar_apparent_elevation_angle, self.solar_elevation_angle, self.solar_azimuth_angle, self.solar_equation_of_time
 
 
 def gendaymtx(wea_file, direct=True, reinhart=False):
@@ -115,7 +117,7 @@ def load_sky_matrix(mtx_file, reinhart=False):
     """
     radiation_matrix = pd.read_csv(mtx_file, sep="\s+", skip_blank_lines=True, skiprows=8, header=None).values
     radiation_matrix = np.sum(radiation_matrix * np.array([0.265074126, 0.670114631, 0.064811243]), axis=1)
-    radiation_matrix = np.array(list(chunk(radiation_matrix, 8760))[1:])
+    radiation_matrix = np.array(list(chunk(radiation_matrix, n=8760, method="size"))[1:])
     radiation_matrix = np.multiply(radiation_matrix.T,
                                    REINHART_PATCH_CONVERSION_FACTOR if reinhart else TREGENZA_PATCH_CONVERSION_FACTOR)
     return radiation_matrix
@@ -175,7 +177,8 @@ def generate_sky_matrix(self, reuse_matrix=False):
             self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
             print("Direct and diffuse sky matrices loaded")
         except Exception as e:
-            raise ValueError("Looks like you haven't got a sky matrix to load - try creating one first!\n\n{0:}".format(e))
+            raise ValueError(
+                "Looks like you haven't got a sky matrix to load - try creating one first!\n\n{0:}".format(e))
     else:
         # Generate sky matrices
         self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = sky_matrix_calculations(self.wea_file,

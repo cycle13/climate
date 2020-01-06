@@ -7,7 +7,7 @@ import numpy as np
 def weatherfile_ground_temperatures(self):
     # Get the ground temperatures from the EPW file per month
     g_temps = {}
-    for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], 16))):
+    for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], n=16, method="size"))):
         g_temps[float(n)] = [float(j) for j in i[4:]]
     temp_ground_temperature = pd.DataFrame.from_dict(g_temps)
     temp_ground_temperature.index = pd.Series(index=self.index).resample("MS").mean().index

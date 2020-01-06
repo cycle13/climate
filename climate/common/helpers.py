@@ -1,15 +1,12 @@
 from climate.common.constants import *
 
+import pathlib
 import os
 import math
 import re
 import numpy as np
 from scipy import spatial
 
-
-##########################
-# Generic helper methods #
-##########################
 
 def is_mac():
     if os.name == "posix":
@@ -32,24 +29,88 @@ def interpret(val):
             return val
 
 
-def chunk(enumerable, n_chunks):
-    for i in range(0, len(enumerable), n_chunks):
-        yield enumerable[i:i + n_chunks]
+def chunk(enumerable, n=None, method="chunks"):
+    """
+    Partition a list into either n-chunks, or into a number of n-sized sub-lists
+
+    Parameters
+    ----------
+    enumerable : ndarray
+        A 1D array to split
+    n : int
+        Number of partitions or partition size to split list into
+    method : str
+        The method by which to split the array ("chunk" or "size")
+
+    Returns
+    -------
+    chunked_list : list(lists)
+        A list of sub-lists
+    """
+
+    chunked = None
+    enumerable = np.array(enumerable)
+
+    if method == "size":
+        chunked = [list(enumerable[i:i + n]) for i in range(0, enumerable.shape[0], n)]
+
+    elif method == "chunks":
+        chunked = [list(i) for i in np.array_split(enumerable, n)]
+
+    return chunked
 
 
 def generate_directory(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    """
+    Create the directory passed
+
+    Parameters
+    ----------
+    directory : str
+        Directory to create
+
+    Returns
+    -------
+    directory : str
+        Created directory path
+    """
+    pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def hex_to_rgb(hex_string):
+    """
+    Convert an hexadecimal string to its RGB array equivalent
+
+    Parameters
+    ----------
+    hex_string : str
+        1D array containing RGB values in either 0-255 or 0-1 format
+
+    Returns
+    -------
+    rgb_list : ndarray
+        1D array containing RGB values in 0-255 format
+    """
     hex_string = hex_string.lstrip('#')
     lv = len(hex_string)
     return tuple(int(hex_string[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
 def rgb_to_hex(rgb_list):
+    """
+    Convert an RGB tuple/list to its hexadecimal equivalent
+
+    Parameters
+    ----------
+    rgb_list : ndarray
+        1D array containing RGB values in either 0-255 or 0-1 format
+
+    Returns
+    -------
+    hex_color : str
+        Hexadecimal representation of the input RGB color
+    """
     if (rgb_list[0] >= 1) | (rgb_list[1] >= 1) | (rgb_list[2] >= 1):
         return '#%02x%02x%02x' % (int(rgb_list[0]), int(rgb_list[1]), int(rgb_list[2]))
     else:
@@ -62,10 +123,40 @@ def rgb_to_hex(rgb_list):
 
 
 def unit_vector(vector):
+    """
+    Returns the angle between vectors 'v1' and 'v2'
+
+    Parameters
+    ----------
+    vector : vector
+        Non-unitized n-dimensional vector
+
+    Returns
+    -------
+    unit_vector : ndarray
+        The unitized form of the input vector
+    """
     return vector / np.linalg.norm(vector)
 
 
 def angle_between(v1, v2, degrees=False):
+    """
+    Returns the angle between vectors 'v1' and 'v2'
+
+    Parameters
+    ----------
+    v1 : vector
+        The first vector
+    v2 : vector
+        The second vector
+    degrees : bool
+        True for value returned in degrees, False for value returned in radians
+
+    Returns
+    -------
+    angle : float
+        The angle between the passed vectors
+    """
     v1_u = unit_vector(v1)
     v2_u = unit_vector(v2)
     angle = np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
