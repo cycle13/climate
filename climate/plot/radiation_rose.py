@@ -76,4 +76,6 @@ def radiation_rose(self, season_period="Annual", day_period="Daily", n_sector=36
             fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
             print("{0:} rose saved to {1:}".format(tx, save_path))
 
+        plt.close()
+
     return figs

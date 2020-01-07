@@ -6,7 +6,7 @@ from windrose import WindroseAxes
 import numpy as np
 
 
-def windrose(self, season_period="Annual", day_period="Daily", n_sector=16, cmap=None, tone_color="k", save=False, close=False):
+def windrose(self, season_period="Annual", day_period="Daily", n_sector=16, cmap=None, tone_color="k", save=False):
 
     # Construct the save_path and create directory if it doesn't exist
     save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "windrose_{}{}.png".format(
@@ -46,7 +46,7 @@ def windrose(self, season_period="Annual", day_period="Daily", n_sector=16, cmap
         save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, bbox_extra_artists=(lgd,), bbox_inches='tight', dpi=300, transparent=False)
         print("Windrose saved to {}".format(save_path))
-    if close:
-        plt.close()
+
+    plt.close()
 
     return fig

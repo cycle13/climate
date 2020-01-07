@@ -1,7 +1,7 @@
 from __future__ import division, print_function
 
 import sys
-import os
+import os, pathlib
 
 import pickle
 
@@ -18,8 +18,7 @@ from .utilities import read_csv, str2fl
 # pp = pprint.pprint
 # dd = decimal.Decimal.from_float
 
-DIR_CURR = os.path.abspath(os.path.dirname(__file__))
-DIR_DOE_PATH = os.path.join(DIR_CURR, "..", "resources", "DOERefBuildings")
+DIR_DOE_PATH = "./climate/urban_weather_generator/resources/DOERefBuildings"
 
 # Define standards: 16 buiding types, 3 built eras, 16 climate zones
 
@@ -117,8 +116,8 @@ def readDOE(serialize_output=True):
         # print "\tType: {} @i={}".format(BLDTYPE[i], i)
 
         # Read building summary (Sheet 1)
-        file_doe_name_bld = os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
-                                         "BLD{}_BuildingSummary.csv".format(i + 1))
+        file_doe_name_bld = os.path.abspath(os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
+                                         "BLD{}_BuildingSummary.csv".format(i + 1)))
         list_doe1 = read_csv(file_doe_name_bld)
         # listof(listof 3 era values)
         nFloor = str2fl(list_doe1[3][3:6])  # Number of Floors, this will be list of floats and str if "basement"
@@ -128,8 +127,8 @@ def readDOE(serialize_output=True):
         AreaRoof = str2fl(list_doe1[8][3:6])  # [m2] Gross Dimensions - Total area
 
         # Read zone summary (Sheet 2)
-        file_doe_name_zone = os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
-                                          "BLD{}_ZoneSummary.csv".format(i + 1))
+        file_doe_name_zone = os.path.abspath(os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
+                                          "BLD{}_ZoneSummary.csv".format(i + 1)))
         list_doe2 = read_csv(file_doe_name_zone)
         # listof(listof 3 eras)
         AreaFloor = str2fl([list_doe2[2][5], list_doe2[3][5], list_doe2[4][5]])  # [m2]
@@ -146,8 +145,8 @@ def readDOE(serialize_output=True):
             [list_doe2[2][20], list_doe2[3][20], list_doe2[4][20]])  # Air Changes Per Hour (ACH) Infiltration
 
         # Read location summary (Sheet 3)
-        file_doe_name_location = os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
-                                              "BLD{}_LocationSummary.csv".format(i + 1))
+        file_doe_name_location = os.path.abspath(os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
+                                              "BLD{}_LocationSummary.csv".format(i + 1)))
         list_doe3 = read_csv(file_doe_name_location)
         # (listof (listof 3 eras (listof 16 climate types)))
         TypeWall = [list_doe3[3][4:20], list_doe3[14][4:20], list_doe3[25][4:20]]  # Construction type
@@ -163,8 +162,8 @@ def readDOE(serialize_output=True):
         FanFlow = str2fl([list_doe3[13][4:20], list_doe3[24][4:20], list_doe3[35][4:20]])  # [m3/s] Fan Max Flow Rate
 
         # Read Schedules (Sheet 4)
-        file_doe_name_schedules = os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
-                                               "BLD{}_Schedules.csv".format(i + 1))
+        file_doe_name_schedules = os.path.abspath(os.path.join("{}".format(DIR_DOE_PATH), "BLD{}".format(i + 1),
+                                               "BLD{}_Schedules.csv".format(i + 1)))
         list_doe4 = read_csv(file_doe_name_schedules)
 
         # listof(listof weekday, sat, sun (list of 24 fractions)))
@@ -357,20 +356,20 @@ def readDOE(serialize_output=True):
                 Schedule[i][j][k].Qgas = Gas[j]  # W/m^2 (max) for gas
                 Schedule[i][j][k].Vent = Vent[j] / 1000.0  # m^3/m^2 per person
                 Schedule[i][j][k].Vswh = SHW[j] / AreaFloor[j]  # litres per hour per m^2 of floor
-
-    # if not test serialize refDOE,refBEM,Schedule and store in resources
-    if serialize_output:
-        # create a binary file for serialized obj
-        pkl_file_path = os.path.join(DIR_CURR, 'refdata', 'readDOE.pkl')
-        pickle_readDOE = open(pkl_file_path, 'wb')
-
-        # dump in ../resources
-        # Pickle objects, protocol 1 b/c binary file
-        pickle.dump(refDOE, pickle_readDOE, 1)
-        pickle.dump(refBEM, pickle_readDOE, 1)
-        pickle.dump(Schedule, pickle_readDOE, 1)
-
-        pickle_readDOE.close()
+    #
+    # # if not test serialize refDOE,refBEM,Schedule and store in resources
+    # if serialize_output:
+    #     # create a binary file for serialized obj
+    #     pkl_file_path = os.path.join(DIR_CURR, 'refdata', 'readDOE.pkl')
+    #     pickle_readDOE = open(pkl_file_path, 'wb')
+    #
+    #     # dump in ../resources
+    #     # Pickle objects, protocol 1 b/c binary file
+    #     pickle.dump(refDOE, pickle_readDOE, 1)
+    #     pickle.dump(refBEM, pickle_readDOE, 1)
+    #     pickle.dump(Schedule, pickle_readDOE, 1)
+    #
+    #     pickle_readDOE.close()
 
     return refDOE, refBEM, Schedule
 

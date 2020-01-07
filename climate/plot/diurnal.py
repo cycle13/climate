@@ -102,4 +102,6 @@ def diurnal(self, dew_point=True, tone_color="k", save=False):
         fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
         print("Diurnal plot saved to {}".format(save_path))
 
+    plt.close()
+
     return fig

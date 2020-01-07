@@ -70,4 +70,6 @@ def heatmap(self, variable, cmap='Greys', tone_color="k", save=False):
         fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
         print("Heatmap saved to {}".format(save_path))
 
+    plt.close()
+
     return fig

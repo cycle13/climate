@@ -6,6 +6,14 @@ from climate.compute.comfort import utci_openfield, \
     utci_solar_adjusted, set_solar_adjusted, set_openfield
 from climate.compute.ground_temperature import weatherfile_ground_temperatures, annual_ground_temperature_at_depth
 from climate.compute.wind import pedestrian_wind_speed
+from climate.compute.uwg import run_uwg
+
+from climate.plot.diurnal import diurnal
+from climate.plot.heatmap import heatmap
+from climate.plot.radiation_rose import radiation_rose
+from climate.plot.wind_rose import windrose
+from climate.plot.psychrometric import psychrometric
+from climate.plot.utci import utci_frequency, utci_heatmap
 
 import pandas as pd
 import pathlib
@@ -135,7 +143,11 @@ class Weather(object):
         self.standard_effective_temperature_solar_adjusted = None
         self.standard_effective_temperature_openfield = None
 
-    def read(self, sun_position=True, pedestrian_wind=True, psychrometrics=True, sky_matrix=False, ground_temp=False, mrt=False, utci=False, _set=False):
+        # Urban weather generator values
+        self.uwg_parameters = None
+        self.uwg_weatherfile = None
+
+    def read(self, sun_position=True, pedestrian_wind=True, psychrometrics=True, sky_matrix=False, ground_temp=False, mrt=False, utci=False, _set=False, uwg=False):
         """
         Read EPW weather-file into weather object.
 
@@ -299,6 +311,10 @@ class Weather(object):
             # Run the SET using the openfield MRT values
             set_openfield(self)
 
+        if uwg:
+            # Run the urban weather generator!
+            run_uwg(self)
+
         return self
 
     def to_wea(self, file_path=None):
@@ -362,6 +378,37 @@ class Weather(object):
         self.csv_file = file_path
         print("CSV file created: {0:}".format(self.csv_file))
         return df
+
+    def plot(self):
+
+        diurnal(self, dew_point=True, tone_color="#555555", save=True)
+        diurnal(self, dew_point=False, tone_color="#555555", save=True)
+
+        heatmap(self, "dry_bulb_temperature", cmap="Reds", tone_color="#555555", save=True)
+        heatmap(self, "relative_humidity", cmap="Blues", tone_color="#555555", save=True)
+        heatmap(self, "wind_direction", cmap="Greys", tone_color="#555555", save=True)
+        heatmap(self, "direct_normal_radiation", cmap="Oranges", tone_color="#555555", save=True)
+        heatmap(self, "diffuse_horizontal_radiation", cmap="Oranges", tone_color="#555555", save=True)
+        heatmap(self, "global_horizontal_radiation", cmap="Oranges", tone_color="#555555", save=True)
+
+        psychrometric(self, bins=50, cmap="inferno", tone_color="#555555", save=True)
+
+        for season_period in ["Annual"]:#, "Spring", "Summer", "Autumn", "Winter"]:
+            for day_period in ["Daily"]:#, "Morning", "Midday", "Afternoon", "Evening", "Night"]:
+
+                radiation_rose(self, season_period=season_period, day_period=day_period, n_sector=36, cmap=None, tone_color="#555555", same_scale=False, save=True)
+                windrose(self, season_period=season_period, day_period=day_period, n_sector=16, cmap=None, tone_color="#555555", save=True)
+
+        try:
+            utci_frequency(self, "universal_thermal_climate_index_openfield", tone_color="#555555", save=True)
+            utci_frequency(self, "universal_thermal_climate_index_solar_adjusted", tone_color="#555555", save=True)
+
+            utci_heatmap(self, "universal_thermal_climate_index_openfield", tone_color="#555555", save=True)
+            utci_heatmap(self, "universal_thermal_climate_index_solar_adjusted", tone_color="#555555", save=True)
+        except Exception as e:
+            print("UTCI hasn't been run - or something like that. I don't know. This bit hasn't been sorted out yet\n{0:}".format(e))
+
+
 
 # class Ground(object):
 #

@@ -23,10 +23,7 @@ import math
 import copy
 import logging
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import pickle
 
 from .simparam import SimParam
 from .weather import Weather
@@ -45,15 +42,10 @@ from .psychrometrics import psychrometrics
 from .readDOE import readDOE
 from .urbflux import urbflux
 from . import utilities
-
-# For debugging only
-#from pprint import pprint
-#from decimal import Decimal
-#pp = pprint
-#dd = Decimal.from_float
+from .readDOE import readDOE
 
 
-class uwg(object):
+class UWG(object):
     """Morph a rural EPW file to urban conditions using a file with a list of urban parameters.
 
     args:
@@ -289,7 +281,7 @@ class uwg(object):
                 self.Tsoil[i][j] = float(soilData[6 + (i*16) + j]) + 273.15
 
         # Set new directory path for the moprhed EPW file
-        self.newPathName = os.path.join(self.destinationDir, self.destinationFileName)
+        self.newPathName = os.path.join(self.destinationFileName)
 
     def read_input(self):
         """Section 3 - Read Input File (.m, file)
@@ -551,14 +543,18 @@ class uwg(object):
         self.alb_wall           # albedo wall addition for total building stock
         """
 
-        if not os.path.exists(self.readDOE_file_path):
-            raise Exception("readDOE.pkl file: '{}' does not exist.".format(readDOE_file_path))
+        # if not os.path.exists(self.readDOE_file_path):
+        #     raise Exception("readDOE.pkl file: '{}' does not exist.".format(self.readDOE_file_path))
+        #
+        # readDOE_file = open(self.readDOE_file_path, 'rb')  # open pickle file in binary form
+        # refDOE = pickle.load(readDOE_file)
+        # refBEM = pickle.load(readDOE_file)
+        # refSchedule = pickle.load(readDOE_file)
+        # readDOE_file.close()
 
-        readDOE_file = open(self.readDOE_file_path, 'rb')  # open pickle file in binary form
-        refDOE = pickle.load(readDOE_file)
-        refBEM = pickle.load(readDOE_file)
-        refSchedule = pickle.load(readDOE_file)
-        readDOE_file.close()
+        refDOE, refBEM, refSchedule = readDOE()
+
+
 
         # Define building energy models
         k = 0
@@ -954,8 +950,8 @@ class uwg(object):
 
         epw_new_id.close()
 
-        print("New climate file '{}' is generated at {}.".format(
-            self.destinationFileName, self.destinationDir))
+        print("New climate file is generated at {}.".format(
+            self.destinationFileName))
 
     def run(self):
 
