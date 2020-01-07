@@ -160,3 +160,155 @@ def utci_heatmap(self, variable, tone_color="k", save=False):
     plt.close()
 
     return fig
+
+
+def utci_heatmap_detailed_generic(series, tone_color="k", title=None):
+    sname = series.name
+    series = series.to_frame()
+
+    fig = plt.figure(figsize=(15, 6), constrained_layout=True)
+    spec = fig.add_gridspec(ncols=1, nrows=2, width_ratios=[1], height_ratios=[2, 1], hspace=0.1)
+
+    hmap = fig.add_subplot(spec[0, 0])
+    hbar = fig.add_subplot(spec[1, 0])
+
+    # Generate colormap parameters
+    colors = ['#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899',
+              '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9',
+              '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9',
+              '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9',
+              '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB',
+              '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF',
+              '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF',
+              '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#F7C1AA', '#F7C1AA', '#F7C1AA', '#F7C1AA', '#F7C1AA',
+              '#F7C1AA', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#C84648', '#C84648',
+              '#C84648', '#C84648', '#C84648', '#C84648', '#C84648', '#C84648']
+    cmap = ListedColormap(colors)
+    cmap.set_under('#053061')
+    cmap.set_over('#B2182B')
+    bounds = np.arange(-41, 48, 1)
+    norm = BoundaryNorm(bounds, cmap.N)
+
+    # Plot heatmap
+    heatmap = hmap.imshow(pd.pivot_table(series, index=series.index.time, columns=series.index.date,
+                                         values=sname).values[::-1],
+                          extent=[dates.date2num(series.index.min()), dates.date2num(series.index.max()), 726449,
+                                  726450],
+                          aspect='auto', cmap=cmap, interpolation='none', vmin=-40, vmax=46)
+    hmap.xaxis_date()
+    hmap.xaxis.set_major_formatter(dates.DateFormatter('%b'))
+    hmap.yaxis_date()
+    hmap.yaxis.set_major_formatter(dates.DateFormatter('%H:%M'))
+    hmap.invert_yaxis()
+    hmap.tick_params(labelleft=True, labelright=True, labelbottom=True)
+    plt.setp(hmap.get_xticklabels(), ha='left', color=tone_color)
+    plt.setp(hmap.get_yticklabels(), color=tone_color)
+    for spine in ['top', 'bottom', 'left', 'right']:
+        hmap.spines[spine].set_visible(False)
+        hmap.spines[spine].set_color(tone_color)
+    hmap.grid(b=True, which='major', color=tone_color, linestyle=':', alpha=0.5)
+
+    # Add colorbar legend and text descriptors for comfort bands
+    cb = fig.colorbar(heatmap, cmap=cmap, norm=norm, boundaries=bounds,
+                      orientation='horizontal', drawedges=False, fraction=0.01, aspect=50,
+                      pad=-0.0, extend='both', ticks=[-40, -27, -13, 0, 9, 26, 32, 38, 46])
+    plt.setp(plt.getp(cb.ax.axes, 'xticklabels'), color=tone_color)
+    cb.outline.set_visible(False)
+    # cb.outline.set_color("#555555")
+    y_move = -0.4
+    hbar.text(0, y_move, 'Extreme\ncold stress', ha='center', va='center', transform=hbar.transAxes, color=tone_color,
+              fontsize='small')
+    hbar.text(np.interp(-27 + (-40 - -27) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Very strong\ncold stress',
+              ha='center', va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(-13 + (-27 - -13) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Strong\ncold stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(0 + (-13 - 0) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Moderate\ncold stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(0 + (9 - 0) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Slight\ncold stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(9 + (26 - 9) / 2, [-44.319, 50.319], [0, 1]), y_move, 'No thermal stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(26 + (32 - 26) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Moderate\nheat stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(32 + (38 - 32) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Strong\nheat stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(np.interp(38 + (46 - 38) / 2, [-44.319, 50.319], [0, 1]), y_move, 'Very strong\nheat stress', ha='center',
+              va='center', transform=hbar.transAxes, color=tone_color, fontsize='small')
+    hbar.text(1, y_move, 'Extreme\nheat stress', ha='center', va='center', transform=hbar.transAxes, color='#555555',
+              fontsize='small')
+
+    # Add stacked plot
+    bins = [-100, -40, -27, -13, 0, 9, 26, 32, 38, 46, 100]
+    tags = ["Extreme cold stress", "Very strong cold stress", "Strong cold stress", "Moderate cold stress",
+            "Slight cold stress", "No thermal stress", "Moderate heat stress", "Strong heat stress",
+            "Very strong heat stress", "Extreme heat stress"]
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    clrs = [
+        '#053061',
+        '#1A5899',
+        '#347FB9',
+        '#82BBD9',
+        '#BFDCEB',
+        '#FFFFFF',
+        '#F7C1AA',
+        '#E3806B',
+        '#C84648',
+        '#B2182B'
+    ]
+
+    adf = pd.DataFrame()
+    for mnth_n, mnth in enumerate(months):
+        # Filter the series to return only the month
+        a = series[series.index.month == mnth_n + 1].dropna().values
+        a = pd.Series(index=tags, name=mnth,
+                      data=[((a > i) & (a <= j)).sum() / len(a) for n, (i, j) in enumerate(zip(bins[:-1], bins[1:]))])
+        adf = pd.concat([adf, a], axis=1)
+    adf = adf.T[tags]
+    adf.plot(kind="bar", ax=hbar, stacked=True, colors=clrs, width=1, legend=False)
+    hbar.set_xlim(-0.5, 11.5)
+    plt.setp(hbar.get_xticklabels(), ha='center', rotation=0, color=tone_color)
+    plt.setp(hbar.get_xticklabels(), ha='left', color=tone_color)
+    plt.setp(hbar.get_yticklabels(), color=tone_color)
+    for spine in ['top', 'right']:
+        hbar.spines[spine].set_visible(False)
+    for spine in ['bottom', 'left']:
+        hbar.spines[spine].set_color(tone_color)
+    hbar.grid(b=True, which='major', color=tone_color, linestyle=':', alpha=0.5)
+    hbar.set_yticklabels(['{:,.0%}'.format(x) for x in hbar.get_yticks()])
+
+    # Add header percentages for bar plot
+    cold_percentages = adf.iloc[:, :5].sum(axis=1).values
+    comfortable_percentages = adf.iloc[:, 5]
+    hot_percentages = adf.iloc[:, 6:].sum(axis=1).values
+    for n, (i, j, k) in enumerate(zip(*[cold_percentages, comfortable_percentages, hot_percentages])):
+        hbar.text(n, 1.02, "{0:0.1f}%\n\n".format(i * 100), va="bottom", ha="center", color="#347FB9", fontsize="small")
+        hbar.text(n, 1.02, "{0:0.1f}%\n".format(j * 100), va="bottom", ha="center", color="#555555", fontsize="small")
+        hbar.text(n, 1.02, "{0:0.1f}%".format(k * 100), va="bottom", ha="center", color="#C84648", fontsize="small")
+    hbar.set_ylim(0, 1)
+
+    # Add title if provided
+    if title is not None:
+        plt.suptitle(title, color=tone_color, y=1, va="bottom")
+
+    plt.tight_layout()
+
+    return fig
+
+
+def utci_heatmap_detailed(self, variable, tone_color="k", save=False):
+    fig = utci_heatmap_detailed_generic(getattr(self, variable), tone_color=tone_color,
+                               title='UTCI approximation (°C)\n{0:} - {1:} - {2:}'.format(
+                                     self.city,
+                                     self.country,
+                                     self.station_id))
+
+    save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "utci_heatmap_detailed_{}.png".format(variable)
+
+    if save:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, bbox_inches="tight", dpi=300, transparent=False)
+        print("UTCI heatmap (detailed) saved to {}".format(save_path))
+
+    plt.close()
+
+    return fig
