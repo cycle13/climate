@@ -1,9 +1,72 @@
 import numpy as np
 import pandas as pd
 
+from matplotlib import cm
+from matplotlib.colors import ListedColormap, BoundaryNorm
+
+#########################
+# Colorscheme constants #
+#########################
+
+bh_colors = {
+    "BH_LightRed": [188, 32, 75],
+    "BH_BrightRed": [213, 0, 50],
+    "BH_LightBlue": [141, 185, 202],
+    "BH_BrightGreen": [108, 194, 78],
+    "BH_Teal": [0, 164, 153],
+    "BH_Orange": [255, 143, 28],
+    "BH_DarkBlue": [0, 97, 127],
+    "BH_Green": [34, 136, 72],
+    "BH_Purple": [36, 19, 95],
+    "BH_DarkRed": [126, 45, 64],
+    "BH_Grey": [150, 140, 131],
+    "BH_BrightPurple": [112, 47, 138],
+    "BH_Pink": [231, 130, 169],
+    "BH_BrightBlue": [0, 169, 224],
+}
+
+bh_colors2 = {
+    "BH_Purple": [143, 114, 176],
+    "BH_BrandGreen": [196, 214, 0],
+    "BH_Pink": [230, 49, 135],
+    "BH_Blue": [0, 176, 240],
+    "BH_DarkBlue": [28, 54, 96],
+    "BH_Orange": [235, 103, 28],
+    "BH_DarkGrey": [63, 63, 63],
+}
+
+utci_colors = [
+    ['#1A5899'] * 13,
+    ['#347FB9'] * 14,
+    ['#82BBD9'] * 13,
+    ['#BFDCEB'] * 10,
+    ['#FFFFFF'] * 17,
+    ['#F7C1AA'] * 6,
+    ['#E3806B'] * 6,
+    ['#C84648'] * 8
+]
+utci_cmap = ListedColormap([item for sublist in utci_colors for item in sublist])
+utci_cmap.set_under('#053061')
+utci_cmap.set_over('#B2182B')
+
+ghadan_utci_colors = [
+    ['#262972'] * 13,
+    ['#3452A4'] * 14,
+    ['#3C65AF'] * 13,
+    ['#37BCED'] * 10,
+    ['#2EB349'] * 17,
+    ['#F38322'] * 6,
+    ['#C31F25'] * 6,
+    ['#7F1416'] * 8
+]
+ghadan_utci_cmap = ListedColormap([item for sublist in ghadan_utci_colors for item in sublist])
+ghadan_utci_cmap.set_over('#580002')
+ghadan_utci_cmap.set_under('#0D104B')
+
 #####################################
 # Urban Weather Generator variables #
 #####################################
+
 from climate.urban_weather_generator.material import Material
 
 UWG_MINTHICKNESS = 0.01  # Minimum layer thickness (to prevent crashing) (m)

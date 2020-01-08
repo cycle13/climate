@@ -1,3 +1,5 @@
+import warnings
+
 from climate.common.constants import *
 
 import pathlib
@@ -6,6 +8,16 @@ import math
 import re
 import numpy as np
 from scipy import spatial
+from matplotlib.colors import LinearSegmentedColormap
+
+
+def find_files(directory, extension=None):
+    p = pathlib.Path(directory).glob('**/*')
+    if extension is None:
+        files = [x for x in p if x.is_file()]
+    else:
+        files = [x for x in p if x.is_file() and x.suffix == extension]
+    return files
 
 
 def is_mac():
@@ -97,6 +109,15 @@ def hex_to_rgb(hex_string):
     return tuple(int(hex_string[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
+def normalise_rgb(rgb_color):
+    if sum([i < 1 for i in rgb_color]) > 1:
+        warnings.warn("\n    Input color may be interpreted incorrectly as the composite RGB values are all less than 1. It's probably worth checking it's correct!", Warning)
+        interpreted_color = np.interp(np.array(rgb_color), [0, 1], [0, 255]).tolist()
+    else:
+        interpreted_color = rgb_color
+    return interpreted_color
+
+
 def rgb_to_hex(rgb_list):
     """
     Convert an RGB tuple/list to its hexadecimal equivalent
@@ -111,10 +132,22 @@ def rgb_to_hex(rgb_list):
     hex_color : str
         Hexadecimal representation of the input RGB color
     """
-    if (rgb_list[0] >= 1) | (rgb_list[1] >= 1) | (rgb_list[2] >= 1):
-        return '#%02x%02x%02x' % (int(rgb_list[0]), int(rgb_list[1]), int(rgb_list[2]))
+    a, b, c = normalise_rgb(rgb_list)
+    return '#%02x%02x%02x' % (max(min([int(a), 255]), 0), max(min([int(b), 255]), 0), max(min([int(c), 255]), 0))
+
+
+def gen_cmap(colors, n=100, r=False):
+    translated_colors = []
+    for color in colors:
+        if type(color) == str:
+            translated_colors.append(hex_to_rgb(color))
+        else:
+            translated_colors.append(normalise_rgb(color))
+    cm = LinearSegmentedColormap.from_list('test', np.interp(translated_colors, [0, 255], [0, 1]), N=n)
+    if r:
+        return cm.reversed()
     else:
-        return '#%02x%02x%02x' % (int(rgb_list[0] * 255), int(rgb_list[1] * 255), int(rgb_list[2] * 255))
+        return cm
 
 
 ####################

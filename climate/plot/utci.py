@@ -1,11 +1,25 @@
 import matplotlib.pyplot as plt
 from matplotlib import dates, cm
 from matplotlib.ticker import MaxNLocator
+from climate.common.constants import utci_cmap
 from matplotlib.colors import ListedColormap, BoundaryNorm
+
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
 import pandas as pd
 import numpy as np
 
-def utci_frequency_generic(series, hours=['00:00', '23:59'], tone_color="k", title=None):
+def utci_frequency_generic(series, hours=['00:00', '23:59'], tone_color="k", title=None, cmap=None):
+
+    if cmap is None:
+        cmap = utci_cmap
+    else:
+        try:
+            cmap = cm.get_cmap(cmap)
+        except Exception as e:
+            print(e)
+            cmap = cmap
 
     fig, ax = plt.subplots(1, 1, figsize=(15, 5))
     data = series.between_time(hours[0], hours[1], include_start=True, include_end=False)
@@ -24,16 +38,16 @@ def utci_frequency_generic(series, hours=['00:00', '23:59'], tone_color="k", tit
     if title is not None:
         plt.title(title, color=tone_color, y=1.05)
 
-    ax.axvspan(-50, -40, color='#053061', zorder=1)
-    ax.axvspan(-40, -27, color='#1A5899', zorder=1)
-    ax.axvspan(-27, -13, color='#347FB9', zorder=1)
-    ax.axvspan(-13, 0, color='#82BBD9', zorder=1)
-    ax.axvspan(0, 9, color='#BFDCEB', zorder=1)
-    ax.axvspan(9, 26, color='#FFFFFF', zorder=1)
-    ax.axvspan(26, 32, color='#F7C1AA', zorder=1)
-    ax.axvspan(32, 38, color='#E3806B', zorder=1)
-    ax.axvspan(38, 46, color='#C84648', zorder=1)
-    ax.axvspan(46, 60, color='#B2182B', zorder=1)
+    ax.axvspan(-50, -40, color=cmap(-0.1), zorder=1)
+    ax.axvspan(-40, -27, color=cmap(0), zorder=1)
+    ax.axvspan(-27, -13, color=cmap(0.2), zorder=1)
+    ax.axvspan(-13, 0, color=cmap(0.4), zorder=1)
+    ax.axvspan(0, 9, color=cmap(0.5), zorder=1)
+    ax.axvspan(9, 26, color=cmap(0.7), zorder=1)
+    ax.axvspan(26, 32, color=cmap(0.8), zorder=1)
+    ax.axvspan(32, 38, color=cmap(0.9), zorder=1)
+    ax.axvspan(38, 46, color=cmap(0.95), zorder=1)
+    ax.axvspan(46, 60, color=cmap(1.2), zorder=1)
     ax.set_xlim([-50, 60])
     bottom, top = ax.get_ylim()
     for i, j, k in zip([-45, -33.5, -20, -6.5, 4.5, 17.5, 29, 35, 42, 53], ['{0:.1f}%'.format(i) for i in
@@ -56,13 +70,13 @@ def utci_frequency_generic(series, hours=['00:00', '23:59'], tone_color="k", tit
     return fig
 
 
-def utci_frequency(self, variable, hours=['00:00', '23:59'], tone_color="k", save=False):
+def utci_frequency(self, variable, hours=['00:00', '23:59'], tone_color="k", save=False, cmap=None):
 
     fig = utci_frequency_generic(getattr(self, variable), hours=hours, tone_color=tone_color, title='UTCI approximation (°C) annual frequency between {2:} and {3:}\n{0:} - {1:} - {4:}'.format(self.city,
                                                                                                           self.country,
                                                                                                           hours[0],
                                                                                                           hours[1],
-                                                                                                          self.station_id))
+                                                                                                          self.station_id), cmap=cmap)
 
     save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "utci_frequency_{}.png".format(variable)
 
@@ -76,22 +90,18 @@ def utci_frequency(self, variable, hours=['00:00', '23:59'], tone_color="k", sav
     return fig
 
 
-def utci_heatmap_generic(series, y_move=-0.22, tone_color="k", title=None):
+def utci_heatmap_generic(series, y_move=-0.22, tone_color="k", title=None, cmap=None):
     sname = series.name
     series = series.to_frame()
-    colors = ['#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899',
-              '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9',
-              '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9',
-              '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9',
-              '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB',
-              '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF',
-              '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF',
-              '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#F7C1AA', '#F7C1AA', '#F7C1AA', '#F7C1AA', '#F7C1AA',
-              '#F7C1AA', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#C84648', '#C84648',
-              '#C84648', '#C84648', '#C84648', '#C84648', '#C84648', '#C84648']
-    cmap = ListedColormap(colors)
-    cmap.set_under('#053061')
-    cmap.set_over('#B2182B')
+
+    if cmap is None:
+        cmap = utci_cmap
+    else:
+        try:
+            cmap = cm.get_cmap(cmap)
+        except Exception as e:
+            cmap = cmap
+
     bounds = np.arange(-41, 48, 1)
     norm = BoundaryNorm(bounds, cmap.N)
     fig, ax = plt.subplots(1, 1, figsize=(15, 5))
@@ -143,12 +153,13 @@ def utci_heatmap_generic(series, y_move=-0.22, tone_color="k", title=None):
     return fig
 
 
-def utci_heatmap(self, variable, tone_color="k", save=False):
+def utci_heatmap(self, variable, tone_color="k", save=False, cmap=None):
+
     fig = utci_heatmap_generic(getattr(self, variable), y_move=-0.22, tone_color=tone_color,
                                title='UTCI approximation (°C)\n{0:} - {1:} - {2:}'.format(
                                      self.city,
                                      self.country,
-                                     self.station_id))
+                                     self.station_id), cmap=cmap)
 
     save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "utci_heatmap_{}.png".format(variable)
 
@@ -162,9 +173,18 @@ def utci_heatmap(self, variable, tone_color="k", save=False):
     return fig
 
 
-def utci_heatmap_detailed_generic(series, tone_color="k", title=None):
+def utci_heatmap_detailed_generic(series, tone_color="k", title=None, cmap=None):
     sname = series.name
     series = series.to_frame()
+
+    if cmap is None:
+        cmap = utci_cmap
+    else:
+        try:
+            cmap = cm.get_cmap(cmap)
+        except Exception as e:
+            print(e)
+            cmap = cmap
 
     fig = plt.figure(figsize=(15, 6), constrained_layout=True)
     spec = fig.add_gridspec(ncols=1, nrows=2, width_ratios=[1], height_ratios=[2, 1], hspace=0.1)
@@ -172,20 +192,6 @@ def utci_heatmap_detailed_generic(series, tone_color="k", title=None):
     hmap = fig.add_subplot(spec[0, 0])
     hbar = fig.add_subplot(spec[1, 0])
 
-    # Generate colormap parameters
-    colors = ['#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#1A5899',
-              '#1A5899', '#1A5899', '#1A5899', '#1A5899', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9',
-              '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9', '#347FB9',
-              '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9',
-              '#82BBD9', '#82BBD9', '#82BBD9', '#82BBD9', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB',
-              '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#BFDCEB', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF',
-              '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF',
-              '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#F7C1AA', '#F7C1AA', '#F7C1AA', '#F7C1AA', '#F7C1AA',
-              '#F7C1AA', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#E3806B', '#C84648', '#C84648',
-              '#C84648', '#C84648', '#C84648', '#C84648', '#C84648', '#C84648']
-    cmap = ListedColormap(colors)
-    cmap.set_under('#053061')
-    cmap.set_over('#B2182B')
     bounds = np.arange(-41, 48, 1)
     norm = BoundaryNorm(bounds, cmap.N)
 
@@ -243,17 +249,19 @@ def utci_heatmap_detailed_generic(series, tone_color="k", title=None):
             "Slight cold stress", "No thermal stress", "Moderate heat stress", "Strong heat stress",
             "Very strong heat stress", "Extreme heat stress"]
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+
     clrs = [
-        '#053061',
-        '#1A5899',
-        '#347FB9',
-        '#82BBD9',
-        '#BFDCEB',
-        '#FFFFFF',
-        '#F7C1AA',
-        '#E3806B',
-        '#C84648',
-        '#B2182B'
+        cmap(-0.1),
+        cmap(0),
+        cmap(0.2),
+        cmap(0.4),
+        cmap(0.5),
+        cmap(0.7),
+        cmap(0.8),
+        cmap(0.9),
+        cmap(0.95),
+        cmap(1.2),
     ]
 
     adf = pd.DataFrame()
@@ -281,9 +289,9 @@ def utci_heatmap_detailed_generic(series, tone_color="k", title=None):
     comfortable_percentages = adf.iloc[:, 5]
     hot_percentages = adf.iloc[:, 6:].sum(axis=1).values
     for n, (i, j, k) in enumerate(zip(*[cold_percentages, comfortable_percentages, hot_percentages])):
-        hbar.text(n, 1.02, "{0:0.1f}%\n\n".format(i * 100), va="bottom", ha="center", color="#347FB9", fontsize="small")
+        hbar.text(n, 1.02, "{0:0.1f}%\n\n".format(i * 100), va="bottom", ha="center", color=cmap(-0.1), fontsize="small")
         hbar.text(n, 1.02, "{0:0.1f}%\n".format(j * 100), va="bottom", ha="center", color="#555555", fontsize="small")
-        hbar.text(n, 1.02, "{0:0.1f}%".format(k * 100), va="bottom", ha="center", color="#C84648", fontsize="small")
+        hbar.text(n, 1.02, "{0:0.1f}%".format(k * 100), va="bottom", ha="center", color=cmap(1.2), fontsize="small")
     hbar.set_ylim(0, 1)
 
     # Add title if provided
@@ -295,12 +303,12 @@ def utci_heatmap_detailed_generic(series, tone_color="k", title=None):
     return fig
 
 
-def utci_heatmap_detailed(self, variable, tone_color="k", save=False):
+def utci_heatmap_detailed(self, variable, tone_color="k", save=False, cmap=cmap):
     fig = utci_heatmap_detailed_generic(getattr(self, variable), tone_color=tone_color,
                                title='UTCI approximation (°C)\n{0:} - {1:} - {2:}'.format(
                                      self.city,
                                      self.country,
-                                     self.station_id))
+                                     self.station_id), cmap=cmap)
 
     save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "utci_heatmap_detailed_{}.png".format(variable)
 

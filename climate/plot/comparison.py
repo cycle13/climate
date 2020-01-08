@@ -20,7 +20,9 @@ def compare_series_generic(serieses, names=None, colors=None, bins=None, tone_co
     fig, ax = plt.subplots(2, 1, figsize=(15, 7))
 
     # Frequency plot
-    ax[1].hist(temp.values, bins, label=temp.columns, rwidth=0.9, lw=0, density=True, zorder=4)
+    if colors is None:
+        ax[1].hist(temp.values, bins, label=temp.columns, rwidth=0.9, lw=0, density=True, zorder=4)
+    ax[1].hist(temp.values, bins, label=temp.columns, color=colors, rwidth=0.9, lw=0, density=True, zorder=4)
     ax[1].set_xlabel("Value bins", color=tone_color)
     ax[1].set_ylabel("Frequency", color=tone_color)
     ax[1].set_yticklabels(['{:,.0%}'.format(x) for x in ax[1].get_yticks()], color=tone_color)
@@ -30,7 +32,9 @@ def compare_series_generic(serieses, names=None, colors=None, bins=None, tone_co
     ax[1].set_xlim(np.floor(temp.min().min()), np.ceil(temp.max().max()))
 
     # Series plot
-    ax[0].plot(temp, lw=1, zorder=4)
+    if colors is None:
+        ax[0].plot(temp, lw=1, zorder=4)
+    ax[0].plot(temp, lw=1, zorder=4, color=colors)
     plt.setp(ax[0].get_xticklabels(), ha='left', color=tone_color)
     plt.setp(ax[0].get_yticklabels(), color=tone_color)
     ax[0].set_ylabel("Value", color=tone_color)
