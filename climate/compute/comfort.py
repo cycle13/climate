@@ -462,6 +462,19 @@ def standard_effective_temperature(air_temperature, mean_radiant_temperature, ai
 
     return X
 
+f_set = np.vectorize(standard_effective_temperature)
+
+def fset(dry_bulb_temperature, mean_radiant_temperature, air_velocity, relative_humidity, metabolic_rate=1, clo_value=1):
+
+    standard_effective_temperature = fset(
+        dry_bulb_temperature,
+        mean_radiant_temperature,
+        air_velocity,
+        relative_humidity,
+        metabolic_rate,
+        clo_value
+    )
+    return standard_effective_temperature
 
 def set_openfield(self, metabolic_rate=1, clo_value=1):
 

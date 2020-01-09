@@ -303,7 +303,7 @@ def utci_heatmap_detailed_generic(series, tone_color="k", title=None, cmap=None)
     return fig
 
 
-def utci_heatmap_detailed(self, variable, tone_color="k", save=False, cmap=cmap):
+def utci_heatmap_detailed(self, variable, tone_color="k", save=False, cmap=None):
     fig = utci_heatmap_detailed_generic(getattr(self, variable), tone_color=tone_color,
                                title='UTCI approximation (°C)\n{0:} - {1:} - {2:}'.format(
                                      self.city,
@@ -320,3 +320,10 @@ def utci_heatmap_detailed(self, variable, tone_color="k", save=False, cmap=cmap)
     plt.close()
 
     return fig
+
+
+# def compare_utci_heatmap(serieses, names=None, cmap=None, tone_color="k", savepath=None, title=None):
+#
+#
+#
+#     return None

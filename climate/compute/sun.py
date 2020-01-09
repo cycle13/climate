@@ -170,7 +170,6 @@ def generate_sky_matrix(self, reuse_matrix=False):
 
     # Load pre-existing sky matrices if they exist. Currently no checks here for if the matrix matehces the weatherfile (other than
     if reuse_matrix:
-
         try:
             self.direct_sky_matrix = load_sky_matrix(self.direct_sky_matrix_path, reinhart=self.reinhart)
             self.diffuse_sky_matrix = load_sky_matrix(self.diffuse_sky_matrix_path, reinhart=self.reinhart)

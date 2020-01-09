@@ -8,6 +8,8 @@ from climate.compute.ground_temperature import weatherfile_ground_temperatures, 
 from climate.compute.wind import pedestrian_wind_speed
 from climate.compute.uwg import run_uwg
 
+import climate
+
 from climate.plot.diurnal import diurnal
 from climate.plot.heatmap import heatmap
 from climate.plot.radiation_rose import radiation_rose
@@ -19,6 +21,8 @@ import pandas as pd
 import pathlib
 from io import StringIO
 
+from climate.compute.read_epw import *
+import warnings
 
 class Weather(object):
 
@@ -147,175 +151,260 @@ class Weather(object):
         self.uwg_parameters = None
         self.uwg_weatherfile = None
 
-    def read(self, sun_position=True, pedestrian_wind=True, psychrometrics=True, sky_matrix=False, ground_temp=False, mrt=False, utci=False, _set=False, uwg=False):
-        """
-        Read EPW weather-file into weather object.
+    def read_epw(self, kind="standard"):
+        if kind == "standard":
+            return read_epw_normal(self)
+        elif kind == "ccwwg":
+            return read_epw_ccwwg(self)
+        elif kind == "cibse":
+            return read_epw_cibse(self)
+        else:
+            warnings.warn("EPW kind ('{0:}') unknown".format(kind), Warning)
+            return None
 
-        Additional processing is possible using the flags provided.
-
-        Parameters
-        ----------
-        sky_matrix : bool
-            Calculate the sky-dome, with each patch corresponding to an annual hourly set of direct, diffuse and
-            total-radiation values.
-
-            *These calculations are dependant on the excellent **Radiance gendaymtx** program, available from
-            https://github.com/NREL/Radiance/releases/tag/5.2.*
-
-        Returns
-        -------
-        weather
-            A weather-object giving access to all the loaded and calculated data
-
-        """
-        with open(self.file_path, "r") as f:
-            dat = f.readlines()
-
-            # Read location data
-            self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = dat[0].strip().split(",")[1:]
-            self.latitude = float(self.latitude)
-            self.longitude = float(self.longitude)
-            self.time_zone = float(self.time_zone)
-            self.elevation = float(self.elevation)
-            self.design_conditions = ",".join(dat[1].strip().split(",")[1:])
-            self.typical_extreme_periods = ",".join(dat[2].strip().split(",")[1:])
-            self.ground_temperatures = ",".join(dat[3].strip().split(",")[1:])
-            self.holidays_daylight_savings = ",".join(dat[4].strip().split(",")[1:])
-            self.comments_1 = ",".join(dat[5].strip().split(",")[1:])
-            self.comments_2 = ",".join(dat[6].strip().split(",")[1:])
-
-            # Read the data table
-            df = pd.read_csv(StringIO("\n".join(dat[8:])), header=None)
-
-            # Rename columns
-            df.columns = [
-                'year',
-                'month',
-                'day',
-                'hour',
-                'minute',
-                'data_source_and_uncertainty_flags',
-                'dry_bulb_temperature',
-                'dew_point_temperature',
-                'relative_humidity',
-                'atmospheric_station_pressure',
-                'extraterrestrial_horizontal_radiation',
-                'extraterrestrial_direct_normal_radiation',
-                'horizontal_infrared_radiation_intensity',
-                'global_horizontal_radiation',
-                'direct_normal_radiation',
-                'diffuse_horizontal_radiation',
-                'global_horizontal_illuminance',
-                'direct_normal_illuminance',
-                'diffuse_horizontal_illuminance',
-                'zenith_luminance',
-                'wind_direction',
-                'wind_speed',
-                'total_sky_cover',
-                'opaque_sky_cover',
-                'visibility',
-                'ceiling_height',
-                'present_weather_observation',
-                'present_weather_codes',
-                'precipitable_water',
-                'aerosol_optical_depth',
-                'snow_depth',
-                'days_since_last_snowfall',
-                'albedo',
-                'liquid_precipitation_depth',
-                'liquid_precipitation_quantity',
-            ]
-
-            # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
-            self.index = DATETIME_INDEX.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
-            df.index = self.index
-
-            # Drop date/time columns
-            df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
-
-            # Make loaded data accessible
-            self.data_source_and_uncertainty_flags = df.data_source_and_uncertainty_flags
-            self.dry_bulb_temperature = df.dry_bulb_temperature
-            self.dew_point_temperature = df.dew_point_temperature
-            self.relative_humidity = df.relative_humidity
-            self.atmospheric_station_pressure = df.atmospheric_station_pressure
-            self.extraterrestrial_horizontal_radiation = df.extraterrestrial_horizontal_radiation
-            self.extraterrestrial_direct_normal_radiation = df.extraterrestrial_direct_normal_radiation
-            self.horizontal_infrared_radiation_intensity = df.horizontal_infrared_radiation_intensity
-            self.global_horizontal_radiation = df.global_horizontal_radiation
-            self.direct_normal_radiation = df.direct_normal_radiation
-            self.diffuse_horizontal_radiation = df.diffuse_horizontal_radiation
-            self.global_horizontal_illuminance = df.global_horizontal_illuminance
-            self.direct_normal_illuminance = df.direct_normal_illuminance
-            self.diffuse_horizontal_illuminance = df.diffuse_horizontal_illuminance
-            self.zenith_luminance = df.zenith_luminance
-            self.wind_direction = df.wind_direction
-            self.wind_speed = df.wind_speed
-            self.total_sky_cover = df.total_sky_cover
-            self.opaque_sky_cover = df.opaque_sky_cover
-            self.visibility = df.visibility
-            self.ceiling_height = df.ceiling_height
-            self.present_weather_observation = df.present_weather_observation
-            self.present_weather_codes = df.present_weather_codes
-            self.precipitable_water = df.precipitable_water
-            self.aerosol_optical_depth = df.aerosol_optical_depth
-            self.snow_depth = df.snow_depth
-            self.days_since_last_snowfall = df.days_since_last_snowfall
-            self.albedo = df.albedo
-            self.liquid_precipitation_depth = df.liquid_precipitation_depth
-            self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
-            # self.df = df
-
-        # Generate the sky matrix
-        if sky_matrix:
-            generate_sky_matrix(self)
-
-        if ground_temp:
-            # Calculate soil temperatures
-            annual_ground_temperature_at_depth(self, depth=0.5)
-
-            # Interpolate ground temperatures from loaded weatherfile
-            weatherfile_ground_temperatures(self)
-
-        if pedestrian_wind:
-            # Calculate pedestrian height wind speed (at 1.5m above ground)
-            pedestrian_wind_speed(self)
-
-        if sun_position:
-            # Run the solar position calculations
-            annual_sun_position(self)
-
-        if psychrometrics:
-            # Run the psychrometric calculations
-            annual_psychrometrics(self)
-
-        if mrt:
-            # Run the Solar adjusted MRT method
-            mrt_solar_adjusted(self)
-
-            # Run the openfield MRT method
-            mrt_openfield(self)
-
-        if utci:
-
-            # Run the UTCI using the solar adjusted MRT values
-            utci_solar_adjusted(self)
-
-            # Run the UTCI using the openfield MRT values
-            utci_openfield(self)
-
-        if _set:
-            # Run the SET using the solar adjusted MRT values
-            set_solar_adjusted(self)
-
-            # Run the SET using the openfield MRT values
-            set_openfield(self)
-
-        if uwg:
-            # Run the urban weather generator!
-            run_uwg(self)
-
+    def run_sun_position(self):
+        climate.compute.sun.annual_sun_position(self)
         return self
+
+    def run_psychrometrics(self):
+        climate.compute.psychrometrics.annual_psychrometrics(self)
+        return self
+
+    def run_sky_matrix(self, reuse_matrix=True):
+        climate.compute.sun.generate_sky_matrix(self, reuse_matrix=reuse_matrix)
+        return self
+
+    def run_pedestrian_wind(self, height=1.5, terrain="Airport runway areas"):
+        climate.compute.wind.pedestrian_wind_speed(self, target_wind_height=height, terrain_roughness=terrain)
+        return self
+
+    def load_weatherfile_ground_temperatures(self):
+        climate.compute.ground_temperature.weatherfile_ground_temperatures(self)
+        return self
+
+    def run_mean_radiant_temperature(self, method="openfield"):
+        # TODO - Expose ground/shade properties here for customisation of run!! AND ADD KWARGS to achieve this!!
+
+        if method == "openfield":
+            if self.total_sky_matrix is None:
+                self.run_sky_matrix()
+            if self.pedestrian_wind_speed is None:
+                self.run_pedestrian_wind()
+            if self.ground_temperature_500_weatherfile is None:
+                self.load_weatherfile_ground_temperatures()
+            mrt_openfield(self)
+        elif method == "solar_adjusted":
+            if self.solar_elevation_angle is None:
+                self.run_sun_position()
+            mrt_solar_adjusted(self)
+        return self
+
+    # TODO - modify UTCI and SET methods to allow for
+
+    def run_universal_thermal_climate_index(self, method="openfield"):
+        # TODO - Expose mrt here - or manually calculate MRT first custom then run this
+        if self.pedestrian_wind_speed is None:
+            self.run_pedestrian_wind()
+        if method == "openfield":
+            if self.mean_radiant_temperature_openfield is None:
+                self.run_mean_radiant_temperature(method=method)
+            utci_openfield(self)
+        elif method == "solar_adjusted":
+            if self.mean_radiant_temperature_solar_adjusted is None:
+                self.run_mean_radiant_temperature(method=method)
+            utci_solar_adjusted(self)
+        return self
+
+    def run_standard_effective_temperature(self, method="openfield"):
+        # TODO - Expose MET, CLO values
+        if self.pedestrian_wind_speed is None:
+            self.run_pedestrian_wind()
+        if method == "openfield":
+            if self.mean_radiant_temperature_openfield is None:
+                self.run_mean_radiant_temperature(method=method)
+            set_openfield(self)
+        elif method == "solar_adjusted":
+            if self.mean_radiant_temperature_solar_adjusted is None:
+                self.run_mean_radiant_temperature(method=method)
+            set_solar_adjusted(self)
+        return self
+
+    #     if _set:
+    #         # Run the SET using the solar adjusted MRT values
+    #         set_solar_adjusted(self)
+    #
+    #         # Run the SET using the openfield MRT values
+    #         set_openfield(self)
+
+    # def read(self, sun_position=True, pedestrian_wind=True, psychrometrics=True, sky_matrix=False, ground_temp=False, mrt=False, utci=False, _set=False, uwg=False):
+    #     """
+    #     Read EPW weather-file into weather object.
+    #
+    #     Additional processing is possible using the flags provided.
+    #
+    #     Parameters
+    #     ----------
+    #     sky_matrix : bool
+    #         Calculate the sky-dome, with each patch corresponding to an annual hourly set of direct, diffuse and
+    #         total-radiation values.
+    #
+    #         *These calculations are dependant on the excellent **Radiance gendaymtx** program, available from
+    #         https://github.com/NREL/Radiance/releases/tag/5.2.*
+    #
+    #     Returns
+    #     -------
+    #     weather
+    #         A weather-object giving access to all the loaded and calculated data
+    #
+    #     """
+    #     with open(self.file_path, "r") as f:
+    #         dat = f.readlines()
+    #
+    #         # Read location data
+    #         self.city, self.region, self.country, self.dataset_type, self.station_id, self.latitude, self.longitude, self.time_zone, self.elevation = dat[0].strip().split(",")[1:]
+    #         self.latitude = float(self.latitude)
+    #         self.longitude = float(self.longitude)
+    #         self.time_zone = float(self.time_zone)
+    #         self.elevation = float(self.elevation)
+    #         self.design_conditions = ",".join(dat[1].strip().split(",")[1:])
+    #         self.typical_extreme_periods = ",".join(dat[2].strip().split(",")[1:])
+    #         self.ground_temperatures = ",".join(dat[3].strip().split(",")[1:])
+    #         self.holidays_daylight_savings = ",".join(dat[4].strip().split(",")[1:])
+    #         self.comments_1 = ",".join(dat[5].strip().split(",")[1:])
+    #         self.comments_2 = ",".join(dat[6].strip().split(",")[1:])
+    #
+    #         # Read the data table
+    #         df = pd.read_csv(StringIO("\n".join(dat[8:])), header=None)
+    #
+    #         # Rename columns
+    #         df.columns = [
+    #             'year',
+    #             'month',
+    #             'day',
+    #             'hour',
+    #             'minute',
+    #             'data_source_and_uncertainty_flags',
+    #             'dry_bulb_temperature',
+    #             'dew_point_temperature',
+    #             'relative_humidity',
+    #             'atmospheric_station_pressure',
+    #             'extraterrestrial_horizontal_radiation',
+    #             'extraterrestrial_direct_normal_radiation',
+    #             'horizontal_infrared_radiation_intensity',
+    #             'global_horizontal_radiation',
+    #             'direct_normal_radiation',
+    #             'diffuse_horizontal_radiation',
+    #             'global_horizontal_illuminance',
+    #             'direct_normal_illuminance',
+    #             'diffuse_horizontal_illuminance',
+    #             'zenith_luminance',
+    #             'wind_direction',
+    #             'wind_speed',
+    #             'total_sky_cover',
+    #             'opaque_sky_cover',
+    #             'visibility',
+    #             'ceiling_height',
+    #             'present_weather_observation',
+    #             'present_weather_codes',
+    #             'precipitable_water',
+    #             'aerosol_optical_depth',
+    #             'snow_depth',
+    #             'days_since_last_snowfall',
+    #             'albedo',
+    #             'liquid_precipitation_depth',
+    #             'liquid_precipitation_quantity',
+    #         ]
+    #
+    #         # Create datetime index - using 2018 as base year (a Monday starting year without leap-day)
+    #         self.index = DATETIME_INDEX.tz_localize("UTC").tz_convert(int(self.time_zone * 60 * 60)) - pd.Timedelta(hours=self.time_zone)
+    #         df.index = self.index
+    #
+    #         # Drop date/time columns
+    #         df.drop(columns=["year", "month", "day", "hour", "minute"], inplace=True)
+    #
+    #         # Make loaded data accessible
+    #         self.data_source_and_uncertainty_flags = df.data_source_and_uncertainty_flags
+    #         self.dry_bulb_temperature = df.dry_bulb_temperature
+    #         self.dew_point_temperature = df.dew_point_temperature
+    #         self.relative_humidity = df.relative_humidity
+    #         self.atmospheric_station_pressure = df.atmospheric_station_pressure
+    #         self.extraterrestrial_horizontal_radiation = df.extraterrestrial_horizontal_radiation
+    #         self.extraterrestrial_direct_normal_radiation = df.extraterrestrial_direct_normal_radiation
+    #         self.horizontal_infrared_radiation_intensity = df.horizontal_infrared_radiation_intensity
+    #         self.global_horizontal_radiation = df.global_horizontal_radiation
+    #         self.direct_normal_radiation = df.direct_normal_radiation
+    #         self.diffuse_horizontal_radiation = df.diffuse_horizontal_radiation
+    #         self.global_horizontal_illuminance = df.global_horizontal_illuminance
+    #         self.direct_normal_illuminance = df.direct_normal_illuminance
+    #         self.diffuse_horizontal_illuminance = df.diffuse_horizontal_illuminance
+    #         self.zenith_luminance = df.zenith_luminance
+    #         self.wind_direction = df.wind_direction
+    #         self.wind_speed = df.wind_speed
+    #         self.total_sky_cover = df.total_sky_cover
+    #         self.opaque_sky_cover = df.opaque_sky_cover
+    #         self.visibility = df.visibility
+    #         self.ceiling_height = df.ceiling_height
+    #         self.present_weather_observation = df.present_weather_observation
+    #         self.present_weather_codes = df.present_weather_codes
+    #         self.precipitable_water = df.precipitable_water
+    #         self.aerosol_optical_depth = df.aerosol_optical_depth
+    #         self.snow_depth = df.snow_depth
+    #         self.days_since_last_snowfall = df.days_since_last_snowfall
+    #         self.albedo = df.albedo
+    #         self.liquid_precipitation_depth = df.liquid_precipitation_depth
+    #         self.liquid_precipitation_quantity = df.liquid_precipitation_quantity
+    #         # self.df = df
+    #
+    #     # Generate the sky matrix
+    #     if sky_matrix:
+    #         generate_sky_matrix(self)
+    #
+    #     if ground_temp:
+    #         # Calculate soil temperatures
+    #         annual_ground_temperature_at_depth(self, depth=0.5)
+    #
+    #         # Interpolate ground temperatures from loaded weatherfile
+    #         weatherfile_ground_temperatures(self)
+    #
+    #     if pedestrian_wind:
+    #         # Calculate pedestrian height wind speed (at 1.5m above ground)
+    #         pedestrian_wind_speed(self)
+    #
+    #     if sun_position:
+    #         # Run the solar position calculations
+    #         annual_sun_position(self)
+    #
+    #     if psychrometrics:
+    #         # Run the psychrometric calculations
+    #         annual_psychrometrics(self)
+    #
+    #     if mrt:
+    #         # Run the Solar adjusted MRT method
+    #         mrt_solar_adjusted(self)
+    #
+    #         # Run the openfield MRT method
+    #         mrt_openfield(self)
+    #
+    #     if utci:
+    #
+    #         # Run the UTCI using the solar adjusted MRT values
+    #         utci_solar_adjusted(self)
+    #
+    #         # Run the UTCI using the openfield MRT values
+    #         utci_openfield(self)
+    #
+    #     if _set:
+    #         # Run the SET using the solar adjusted MRT values
+    #         set_solar_adjusted(self)
+    #
+    #         # Run the SET using the openfield MRT values
+    #         set_openfield(self)
+    #
+    #     if uwg:
+    #         # Run the urban weather generator!
+    #         run_uwg(self)
+    #
+    #     return self
 
     def to_wea(self, file_path=None):
         """

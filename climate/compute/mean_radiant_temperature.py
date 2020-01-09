@@ -4,6 +4,8 @@ from climate.common.helpers import *
 
 import numpy as np
 
+# TODO - Add a rolling thermal lag to the calculated surface temperature for the ground - see added file for surface_tmeperature
+
 
 def fanger_solar_exposure(solar_azimuth_angle, solar_elevation_angle, posture=1):
     # Sitting bivariate B-spline and its derivatives
@@ -89,6 +91,7 @@ def openfield_mean_radiant_temperature(self, ground_roughness="Medium rough", gr
     ground_thickness = 1
     sky_emissivity = calc_sky_emissivity(self.dew_point_temperature, self.total_sky_cover / 10)
     ground_convective_heat_transfer_coefficient = simple_combined_exterior_heat_transfer_coefficient(ground_roughness, self.pedestrian_wind_speed)
+
     ground_k_value = np.interp(np.power(self.relative_humidity, 3), [0, 1e6], [0.33, 1.4])  # TODO: Check what this value is and where it comes from!
 
     ground_temperature = self.ground_temperature_500_weatherfile
