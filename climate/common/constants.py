@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 
 from matplotlib import cm
-from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap
+from matplotlib import cm
 
 #########################
 # Colorscheme constants #
@@ -33,6 +34,17 @@ bh_colors2 = {
     "BH_DarkBlue": [28, 54, 96],
     "BH_Orange": [235, 103, 28],
     "BH_DarkGrey": [63, 63, 63],
+}
+
+variable_heatmaps = {
+    "wind_rose": cm.get_cmap("PuBu"),
+    "wind_speed": cm.get_cmap("GnBu"),
+    "wind_direction": cm.get_cmap("Greys"),
+    "direct_normal_radiation": cm.get_cmap("OrRd"),
+    "diffuse_horizontal_radiation": cm.get_cmap("OrRd"),
+    "dry_bulb_temperature": cm.get_cmap("Reds"),
+    "relative_humidity": cm.get_cmap("Blues"),
+    "dew_point_temperature": cm.get_cmap("Greens"),
 }
 
 utci_colors = [
