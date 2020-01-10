@@ -1,0 +1,7 @@
+matplotlib
+numpy
+pandas
+psychrolib
+pvlib
+scipy
+windrose
