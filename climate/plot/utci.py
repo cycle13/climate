@@ -78,7 +78,7 @@ def utci_frequency(self, variable, hours=['00:00', '23:59'], tone_color="k", sav
                                                                                                           hours[1],
                                                                                                           self.station_id), cmap=cmap)
 
-    save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "utci_frequency_{}.png".format(variable)
+    save_path = self.file_path.parent / "{}_Plot".format(self.file_path.stem) / "utci_frequency_{}_{}_{}.png".format(hours[0].replace(":", ""), hours[1].replace(":", ""), variable)
 
     if save:
         save_path.parent.mkdir(parents=True, exist_ok=True)

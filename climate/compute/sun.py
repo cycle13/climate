@@ -1,6 +1,7 @@
 import pathlib
 import platform
 import subprocess
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -120,6 +121,7 @@ def load_sky_matrix(mtx_file, reinhart=False):
     radiation_matrix = np.array(list(chunk(radiation_matrix, n=8760, method="size"))[1:])
     radiation_matrix = np.multiply(radiation_matrix.T,
                                    REINHART_PATCH_CONVERSION_FACTOR if reinhart else TREGENZA_PATCH_CONVERSION_FACTOR)
+    print("Sky matrix loaded: {0:}".format(mtx_file))
     return radiation_matrix
 
 
@@ -158,7 +160,8 @@ def sky_matrix_calculations(wea_file, reinhart=False):
     return direct_sky_matrix, diffuse_sky_matrix, total_sky_matrix
 
 
-def generate_sky_matrix(self, reuse_matrix=False):
+def generate_sky_matrix(self):
+
     # Specify sky patch sub-division method - Reinhart by default and hard-coded here
     self.reinhart = True
 
@@ -168,16 +171,15 @@ def generate_sky_matrix(self, reuse_matrix=False):
         self.direct_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".dirmtx")
         self.diffuse_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".diffmtx")
 
-    # Load pre-existing sky matrices if they exist. Currently no checks here for if the matrix matehces the weatherfile (other than
-    if reuse_matrix:
-        try:
-            self.direct_sky_matrix = load_sky_matrix(self.direct_sky_matrix_path, reinhart=self.reinhart)
-            self.diffuse_sky_matrix = load_sky_matrix(self.diffuse_sky_matrix_path, reinhart=self.reinhart)
-            self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
-            print("Direct and diffuse sky matrices loaded")
-        except Exception as e:
-            raise ValueError(
-                "Looks like you haven't got a sky matrix to load - try creating one first!\n\n{0:}".format(e))
+    # # Load pre-existing sky matrices if they exist. Currently no checks here for if the matrix matehces the weatherfile (other than
+    # if reuse_matrix:
+    #     try:
+    #         self.direct_sky_matrix = load_sky_matrix(self.direct_sky_matrix_path, reinhart=self.reinhart)
+    #         self.diffuse_sky_matrix = load_sky_matrix(self.diffuse_sky_matrix_path, reinhart=self.reinhart)
+    #         self.total_sky_matrix = self.direct_sky_matrix + self.diffuse_sky_matrix
+    #         print("Direct and diffuse sky matrices loaded")
+    #     except Exception as e:
+    #         warnings.warn("{0:}\nLooks like you haven't got a sky matrix to load - creating them now!".format(e), Warning)
     else:
         # Generate sky matrices
         self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = sky_matrix_calculations(self.wea_file,

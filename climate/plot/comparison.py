@@ -22,7 +22,8 @@ def compare_series_generic(serieses, names=None, colors=None, bins=None, tone_co
     # Frequency plot
     if colors is None:
         ax[1].hist(temp.values, bins, label=temp.columns, rwidth=0.9, lw=0, density=True, zorder=4)
-    ax[1].hist(temp.values, bins, label=temp.columns, color=colors, rwidth=0.9, lw=0, density=True, zorder=4)
+    else:
+        ax[1].hist(temp.values, bins, label=temp.columns, color=colors, rwidth=0.9, lw=0, density=True, zorder=4)
     ax[1].set_xlabel("Value bins", color=tone_color)
     ax[1].set_ylabel("Frequency", color=tone_color)
     ax[1].set_yticklabels(['{:,.0%}'.format(x) for x in ax[1].get_yticks()], color=tone_color)
@@ -34,7 +35,9 @@ def compare_series_generic(serieses, names=None, colors=None, bins=None, tone_co
     # Series plot
     if colors is None:
         ax[0].plot(temp, lw=1, zorder=4)
-    ax[0].plot(temp, lw=1, zorder=4, color=colors)
+    else:
+        for n, i in enumerate(serieses):
+            ax[0].plot(temp.index, i, lw=1, zorder=4, color=colors[n])
     plt.setp(ax[0].get_xticklabels(), ha='left', color=tone_color)
     plt.setp(ax[0].get_yticklabels(), color=tone_color)
     ax[0].set_ylabel("Value", color=tone_color)
@@ -49,8 +52,13 @@ def compare_series_generic(serieses, names=None, colors=None, bins=None, tone_co
     [[i.spines[j].set_visible(False) for j in ["right", "top"]] for i in ax]
     [[i.spines[j].set_color(tone_color) for j in ["left", "bottom"]] for i in ax]
 
-    lgd = ax[1].legend(bbox_to_anchor=(0.5, 0), loc="upper center", ncol=max(len(serieses), 5), borderaxespad=3,
-                       frameon=False)
+    lgd = ax[1].legend(
+        bbox_to_anchor=(0, 1),
+        loc=2,
+        ncol=1,
+        borderaxespad=0,
+        frameon=False,
+    )
     lgd.get_frame().set_facecolor((1, 1, 1, 0))
     [plt.setp(text, color=tone_color) for text in lgd.get_texts()]
 

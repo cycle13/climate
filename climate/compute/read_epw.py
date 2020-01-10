@@ -165,8 +165,6 @@ def read_epw_ccwwg(self):
         # Read the data table
         df = pd.read_csv(StringIO("\n".join(data[8:])), header=None)
 
-        print(df.shape)
-
         # Rename columns
         df.columns = [
             'year',

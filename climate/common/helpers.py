@@ -1,3 +1,5 @@
+# TODO - Add method to create mask for annual data given hours as list or hour as range, season or month
+
 import warnings
 
 from climate.common.constants import *
@@ -90,7 +92,7 @@ def generate_directory(directory):
     return directory
 
 
-def hex_to_rgb(hex_string):
+def hex_to_rgb(hex_string, normalise=False):
     """
     Convert an hexadecimal string to its RGB array equivalent
 
@@ -106,13 +108,24 @@ def hex_to_rgb(hex_string):
     """
     hex_string = hex_string.lstrip('#')
     lv = len(hex_string)
-    return tuple(int(hex_string[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
+    if normalise:
+        return
+    else:
+        return np.array(tuple(int(hex_string[i:i + lv // 3], 16) for i in range(0, lv, lv // 3)))
 
 
 def normalise_rgb(rgb_color):
     if sum([i < 1 for i in rgb_color]) > 1:
         warnings.warn("\n    Input color may be interpreted incorrectly as the composite RGB values are all less than 1. It's probably worth checking it's correct!", Warning)
         interpreted_color = np.interp(np.array(rgb_color), [0, 1], [0, 255]).tolist()
+    else:
+        interpreted_color = rgb_color
+    return interpreted_color
+
+def denormalise_rgb(rgb_color):
+    if sum([i < 1 for i in rgb_color]) > 1:
+        warnings.warn("\n    Input color may be interpreted incorrectly as the composite RGB values are all less than 1. It's probably worth checking it's correct!", Warning)
+        interpreted_color = np.interp(np.array(rgb_color), [0, 255], [0, 1]).tolist()
     else:
         interpreted_color = rgb_color
     return interpreted_color

@@ -170,8 +170,8 @@ class Weather(object):
         climate.compute.psychrometrics.annual_psychrometrics(self)
         return self
 
-    def run_sky_matrix(self, reuse_matrix=True):
-        climate.compute.sun.generate_sky_matrix(self, reuse_matrix=reuse_matrix)
+    def run_sky_matrix(self, reuse_matrix=False):
+        climate.compute.sun.generate_sky_matrix(self)
         return self
 
     def run_pedestrian_wind(self, height=1.5, terrain="Airport runway areas"):
@@ -437,7 +437,7 @@ class Weather(object):
         with open(file_path, "w") as f:
             f.write(header + "\n" + "\n".join(values) + "\n")
         self.wea_file = str(file_path)
-        print("WEA file created: {0:}".format(self.wea_file))
+        print("WEA file created: {0:}".format(pathlib.Path(self.wea_file).relative_to(pathlib.Path(self.file_path).parent)))
         return self.wea_file
 
     def to_df(self):
@@ -468,34 +468,40 @@ class Weather(object):
         print("CSV file created: {0:}".format(self.csv_file))
         return df
 
-    def plot(self):
+    def from_csv(self, file_path=None):
 
-        diurnal(self, dew_point=True, tone_color="#555555", save=True)
-        diurnal(self, dew_point=False, tone_color="#555555", save=True)
+        return self
 
-        heatmap(self, "dry_bulb_temperature", cmap="Reds", tone_color="#555555", save=True)
-        heatmap(self, "relative_humidity", cmap="Blues", tone_color="#555555", save=True)
-        heatmap(self, "wind_direction", cmap="Greys", tone_color="#555555", save=True)
-        heatmap(self, "direct_normal_radiation", cmap="Oranges", tone_color="#555555", save=True)
-        heatmap(self, "diffuse_horizontal_radiation", cmap="Oranges", tone_color="#555555", save=True)
-        heatmap(self, "global_horizontal_radiation", cmap="Oranges", tone_color="#555555", save=True)
-
-        psychrometric(self, bins=50, cmap="inferno", tone_color="#555555", save=True)
-
-        for season_period in ["Annual"]:#, "Spring", "Summer", "Autumn", "Winter"]:
-            for day_period in ["Daily"]:#, "Morning", "Midday", "Afternoon", "Evening", "Night"]:
-
-                radiation_rose(self, season_period=season_period, day_period=day_period, n_sector=36, cmap=None, tone_color="#555555", same_scale=False, save=True)
-                windrose(self, season_period=season_period, day_period=day_period, n_sector=16, cmap=None, tone_color="#555555", save=True)
-
-        try:
-            utci_frequency(self, "universal_thermal_climate_index_openfield", tone_color="#555555", save=True)
-            utci_frequency(self, "universal_thermal_climate_index_solar_adjusted", tone_color="#555555", save=True)
-
-            utci_heatmap(self, "universal_thermal_climate_index_openfield", tone_color="#555555", save=True)
-            utci_heatmap(self, "universal_thermal_climate_index_solar_adjusted", tone_color="#555555", save=True)
-        except Exception as e:
-            print("UTCI hasn't been run - or something like that. I don't know. This bit hasn't been sorted out yet\n{0:}".format(e))
+    # def plot(self):
+    #
+    #     # TODO - For each figure plotting method - return FIG object
+    #
+    #     diurnal(self, dew_point=True, tone_color="#555555", save=True)
+    #     diurnal(self, dew_point=False, tone_color="#555555", save=True)
+    #
+    #     heatmap(self, "dry_bulb_temperature", cmap="Reds", tone_color="#555555", save=True)
+    #     heatmap(self, "relative_humidity", cmap="Blues", tone_color="#555555", save=True)
+    #     heatmap(self, "wind_direction", cmap="Greys", tone_color="#555555", save=True)
+    #     heatmap(self, "direct_normal_radiation", cmap="Oranges", tone_color="#555555", save=True)
+    #     heatmap(self, "diffuse_horizontal_radiation", cmap="Oranges", tone_color="#555555", save=True)
+    #     heatmap(self, "global_horizontal_radiation", cmap="Oranges", tone_color="#555555", save=True)
+    #
+    #     psychrometric(self, bins=50, cmap="inferno", tone_color="#555555", save=True)
+    #
+    #     for season_period in ["Annual"]:#, "Spring", "Summer", "Autumn", "Winter"]:
+    #         for day_period in ["Daily"]:#, "Morning", "Midday", "Afternoon", "Evening", "Night"]:
+    #
+    #             radiation_rose(self, season_period=season_period, day_period=day_period, n_sector=36, cmap=None, tone_color="#555555", same_scale=False, save=True)
+    #             windrose(self, season_period=season_period, day_period=day_period, n_sector=16, cmap=None, tone_color="#555555", save=True)
+    #
+    #     try:
+    #         utci_frequency(self, "universal_thermal_climate_index_openfield", tone_color="#555555", save=True)
+    #         utci_frequency(self, "universal_thermal_climate_index_solar_adjusted", tone_color="#555555", save=True)
+    #
+    #         utci_heatmap(self, "universal_thermal_climate_index_openfield", tone_color="#555555", save=True)
+    #         utci_heatmap(self, "universal_thermal_climate_index_solar_adjusted", tone_color="#555555", save=True)
+    #     except Exception as e:
+    #         print("UTCI hasn't been run - or something like that. I don't know. This bit hasn't been sorted out yet\n{0:}".format(e))
 
 
 
