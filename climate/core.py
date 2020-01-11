@@ -10,6 +10,8 @@ from climate.compute.uwg import run_uwg
 
 import climate
 
+from climate.compute.io import load_epw, to_wea, to_df, to_csv, to_pickle, load_pickle
+
 from climate.plot.diurnal import diurnal
 from climate.plot.heatmap import heatmap
 from climate.plot.radiation_rose import radiation_rose
@@ -21,7 +23,6 @@ import pandas as pd
 import pathlib
 from io import StringIO
 
-from climate.compute.read_epw import *
 import warnings
 
 class Weather(object):
@@ -152,15 +153,28 @@ class Weather(object):
         self.uwg_weatherfile = None
 
     def read_epw(self, kind="standard"):
-        if kind == "standard":
-            return read_epw_normal(self)
-        elif kind == "ccwwg":
-            return read_epw_ccwwg(self)
-        elif kind == "cibse":
-            return read_epw_cibse(self)
-        else:
-            warnings.warn("EPW kind ('{0:}') unknown".format(kind), Warning)
-            return None
+        return load_epw(self, kind=kind)
+
+    def to_wea(self, wea_file_path=None):
+        to_wea(self, wea_file_path=wea_file_path)
+        return self
+
+    def to_df(self):
+        return to_df(self)
+
+    def to_csv(self, csv_file_path=None):
+        to_csv(self, csv_file_path=csv_file_path)
+        return self
+
+    def to_pickle(self, pickle_path=None):
+        to_pickle(self, pickle_path=pickle_path)
+        return self
+
+    def read_pickle(self, pickle_path):
+        load_pickle(self, pickle_path=pickle_path)
+        return self
+
+
 
     def run_sun_position(self):
         climate.compute.sun.annual_sun_position(self)
@@ -170,16 +184,12 @@ class Weather(object):
         climate.compute.psychrometrics.annual_psychrometrics(self)
         return self
 
-    def run_sky_matrix(self, reuse_matrix=False):
+    def run_sky_matrix(self):
         climate.compute.sun.generate_sky_matrix(self)
         return self
 
     def run_pedestrian_wind(self, height=1.5, terrain="Airport runway areas"):
         climate.compute.wind.pedestrian_wind_speed(self, target_wind_height=height, terrain_roughness=terrain)
-        return self
-
-    def load_weatherfile_ground_temperatures(self):
-        climate.compute.ground_temperature.weatherfile_ground_temperatures(self)
         return self
 
     def run_mean_radiant_temperature(self, method="openfield"):
@@ -406,67 +416,11 @@ class Weather(object):
     #
     #     return self
 
-    def to_wea(self, file_path=None):
-        """
-        Create WEA file for passing to Radiance programs.
 
-        Parameters
-        ----------
-        file_path : str
-            The file path into which the WEA formatted radiation values will be written. If no value is passed, the
-            output will be written to the same directory as the input weather-file.
 
-        Returns
-        -------
-        str
-            Path to the serialised WEA file.
 
-        """
-        if (self.direct_normal_radiation is None) | (self.diffuse_horizontal_radiation is None):
-            raise Exception('No radiation data is available, try loading some first!')
-        if file_path is None:
-            file_path = pathlib.Path(self.file_path).with_suffix(".wea")
-        header = "place {0:}_{1:}\nlatitude {2:0.3f}\nlongitude {3:0.3f}\ntime_zone {4:0.2f}\nsite_elevation {5:0.1f}\nweather_data_file_units 1".format(
-            slugify(self.city), slugify(self.country), self.latitude, -self.longitude, -self.time_zone * 15,
-            self.elevation)
-        values = []
-        for n, dt in enumerate(self.index):
-            values.append(
-                "{0:} {1:} {2:}.5 {3:} {4:}".format(dt.month, dt.day, dt.hour, self.direct_normal_radiation.values[n],
-                                                    self.diffuse_horizontal_radiation[n]))
-        with open(file_path, "w") as f:
-            f.write(header + "\n" + "\n".join(values) + "\n")
-        self.wea_file = str(file_path)
-        print("WEA file created: {0:}".format(pathlib.Path(self.wea_file).relative_to(pathlib.Path(self.file_path).parent)))
-        return self.wea_file
 
-    def to_df(self):
-        df = pd.concat([getattr(self, name) for name in dir(self) if type(getattr(self, name)).__name__ == "Series"], axis=1)
-        return df
 
-    def to_csv(self, file_path=None):
-        """
-        Write DataFrame containing hourly annual weather variables, and derived variables to a CSV file.
-
-        Parameters
-        ----------
-        file_path : str
-            The file path into which the annual hourly values will be written. If no value is passed, the output
-            will be written to the same directory as the input weather-file.
-
-        Returns
-        -------
-        str
-            Path to the serialised CSV file.
-
-        """
-        df = self.to_df()
-        if file_path is None:
-            file_path = pathlib.Path(self.file_path).with_suffix(".csv")
-        df.to_csv(file_path)
-        self.csv_file = file_path
-        print("CSV file created: {0:}".format(self.csv_file))
-        return df
 
     def from_csv(self, file_path=None):
 

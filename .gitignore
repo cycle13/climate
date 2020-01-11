@@ -5,6 +5,7 @@
 *.h5
 *.wea
 *.csv
+*.pkl
 *_plot/
 
 # Byte-compiled / optimized / DLL files

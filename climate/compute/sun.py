@@ -167,7 +167,8 @@ def generate_sky_matrix(self):
 
     # Create WEA file if it doesn't exist
     if self.wea_file is None:
-        self.wea_file = self.to_wea()
+        self.to_wea()
+        print(self.wea_file)
         self.direct_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".dirmtx")
         self.diffuse_sky_matrix_path = pathlib.Path(self.wea_file).with_suffix(".diffmtx")
 

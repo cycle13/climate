@@ -4,26 +4,84 @@ from psychrolib import SetUnitSystem, SI, GetHumRatioFromRelHum, GetTWetBulbFrom
 import pandas as pd
 import numpy as np
 
-import psychrochart
-
 SetUnitSystem(SI)
 
 # Matricize computation methods
-humidity_ratio_from_vapor_pressure = np.vectorize(GetHumRatioFromVapPres)
-humidity_ratio_from_relative_humidity = np.vectorize(GetHumRatioFromRelHum)
-humidity_ratio_from_enthalpy = np.vectorize(GetHumRatioFromEnthalpyAndTDryBulb)
-dry_air_enthalpy = np.vectorize(GetDryAirEnthalpy)
-moist_air_enthalpy = np.vectorize(GetMoistAirEnthalpy)
-sat_air_enthalpy = np.vectorize(GetSatAirEnthalpy)
-moist_air_volume = np.vectorize(GetMoistAirVolume)
-dew_point_from_vapor_pressue = np.vectorize(GetTDewPointFromVapPres)
-dry_bulb_temperature_from_enthalpy = np.vectorize(GetTDryBulbFromEnthalpyAndHumRatio)
-wet_bulb_temperature_from_humidity_ratio = np.vectorize(GetTWetBulbFromHumRatio)
-wet_bulb_temperature_from_relative_humidity = np.vectorize(GetTWetBulbFromRelHum)
-saturation_vapor_pressure = np.vectorize(GetSatVapPres)
-degree_of_saturation = np.vectorize(GetDegreeOfSaturation)
-vapor_pressure_from_humidity_ratio = np.vectorize(GetVapPresFromHumRatio)
-dry_bulb_temperature_from_moist_air_volume_and_humidity_ratio = np.vectorize(GetTDryBulbFromMoistAirVolumeAndHumRatio)
+
+def humidity_ratio_from_partial_vapor_pressure(water_partial_vapor_pressure, pressure):
+    f_GetHumRatioFromVapPres = np.vectorize(GetHumRatioFromVapPres)
+    return f_GetHumRatioFromVapPres(water_partial_vapor_pressure, pressure)
+
+
+def humidity_ratio_from_relative_humidity(dry_bulb_temperature, relative_humidity, pressure):
+    f_GetHumRatioFromRelHum = np.vectorize(GetHumRatioFromRelHum)
+    return f_GetHumRatioFromRelHum(dry_bulb_temperature, relative_humidity / 100, pressure)
+
+
+def humidity_ratio_from_enthalpy_moist_air(moist_air_enthalpy, dry_bulb_temperature):
+    f_GetHumRatioFromEnthalpyAndTDryBulb = np.vectorize(GetHumRatioFromEnthalpyAndTDryBulb)
+    return f_GetHumRatioFromEnthalpyAndTDryBulb(moist_air_enthalpy, dry_bulb_temperature)
+
+
+def enthalpy_from_dry_air(dry_bulb_temperature):
+    f_GetDryAirEnthalpy = np.vectorize(GetDryAirEnthalpy)
+    return f_GetDryAirEnthalpy(dry_bulb_temperature)
+
+
+def enthalpy_from_moist_air(dry_bulb_temperature, humidity_ratio):
+    f_GetMoistAirEnthalpy = np.vectorize(GetMoistAirEnthalpy)
+    return f_GetMoistAirEnthalpy(dry_bulb_temperature, humidity_ratio)
+
+
+def enthalpy_from_saturated_air(dry_bulb_temperature, pressure):
+    f_GetSatAirEnthalpy = np.vectorize(GetSatAirEnthalpy)
+    return f_GetSatAirEnthalpy(dry_bulb_temperature, pressure)
+
+
+def specific_volume_from_moist_air(dry_bulb_temperature, humidity_ratio, pressure):
+    f_GetMoistAirVolume = np.vectorize(GetMoistAirVolume)
+    return f_GetMoistAirVolume(dry_bulb_temperature, humidity_ratio, pressure)
+
+
+def dew_point_temperature_from_vapor_pressue(dry_bulb_temperature, vapor_pressure):
+    f_GetTDewPointFromVapPres = np.vectorize(GetTDewPointFromVapPres)
+    return f_GetTDewPointFromVapPres(dry_bulb_temperature, vapor_pressure)
+
+
+def dry_bulb_temperature_from_enthalpy(moist_air_enthalpy, humidity_ratio):
+    f_GetTDryBulbFromEnthalpyAndHumRatio = np.vectorize(GetTDryBulbFromEnthalpyAndHumRatio)
+    return f_GetTDryBulbFromEnthalpyAndHumRatio(moist_air_enthalpy, humidity_ratio)
+
+
+def wet_bulb_temperature_from_relative_humidity(dry_bulb_temperature, relative_humidity, pressure):
+    f_GetTWetBulbFromRelHum = np.vectorize(GetTWetBulbFromRelHum)
+    return f_GetTWetBulbFromRelHum(dry_bulb_temperature, relative_humidity, pressure)
+
+
+def wet_bulb_temperature_from_humidity_ratio(dry_bulb_temperature, humidity_ratio, pressure):
+    f_GetTWetBulbFromHumRatio = np.vectorize(GetTWetBulbFromHumRatio)
+    return f_GetTWetBulbFromHumRatio(dry_bulb_temperature, humidity_ratio, pressure)
+
+
+def saturation_vapor_pressure(dry_bulb_temperature):
+    f_GetSatVapPres = np.vectorize(GetSatVapPres)
+    return f_GetSatVapPres(dry_bulb_temperature)
+
+
+def degree_of_saturation(dry_bulb_temperature, humidity_ratio, pressure):
+    f_GetDegreeOfSaturation = np.vectorize(GetDegreeOfSaturation)
+    return f_GetDegreeOfSaturation(dry_bulb_temperature, humidity_ratio, pressure)
+
+
+def vapor_pressure_from_humidity_ratio(humidity_ratio, pressure):
+    f_GetVapPresFromHumRatio = np.vectorize(GetVapPresFromHumRatio)
+    return f_GetVapPresFromHumRatio(humidity_ratio, pressure)
+
+
+def dry_bulb_temperature_from_moist_air_volume_and_humidity_ratio(moist_air_volume, humidity_ratio_pressure):
+    f_GetTDryBulbFromMoistAirVolumeAndHumRatio = np.vectorize(GetTDryBulbFromMoistAirVolumeAndHumRatio)
+    return f_GetTDryBulbFromMoistAirVolumeAndHumRatio()
+
 
 def psychrometric_calculations(dry_bulb_temperature, relative_humidity, atmospheric_station_pressure):
     """
@@ -66,8 +124,8 @@ def psychrometric_calculations(dry_bulb_temperature, relative_humidity, atmosphe
     humidity_ratio = humidity_ratio_from_relative_humidity(dry_bulb_temperature, relative_humidity / 100, atmospheric_station_pressure)
     wet_bulb_temperature = wet_bulb_temperature_from_humidity_ratio(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
     partial_vapour_pressure_moist_air = vapor_pressure_from_humidity_ratio(humidity_ratio, atmospheric_station_pressure)
-    enthalpy = moist_air_enthalpy(dry_bulb_temperature, humidity_ratio)
-    specific_volume_moist_air = moist_air_volume(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
+    enthalpy = enthalpy_from_moist_air(dry_bulb_temperature, humidity_ratio)
+    specific_volume_moist_air = specific_volume_from_moist_air(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
     deg_saturation = degree_of_saturation(dry_bulb_temperature, humidity_ratio, atmospheric_station_pressure)
 
     return humidity_ratio, wet_bulb_temperature, partial_vapour_pressure_moist_air, enthalpy, specific_volume_moist_air, deg_saturation

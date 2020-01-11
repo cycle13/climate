@@ -18,7 +18,6 @@ def weatherfile_ground_temperatures(self):
     self.ground_temperature_500_weatherfile = temp_ground_temperature["ground_temperature_500_weatherfile"]
     self.ground_temperature_2000_weatherfile = temp_ground_temperature["ground_temperature_2000_weatherfile"]
     self.ground_temperature_4000_weatherfile = temp_ground_temperature["ground_temperature_4000_weatherfile"]
-    print("Ground temperature interpolation successful")
     return self.ground_temperature_500_weatherfile, self.ground_temperature_2000_weatherfile, self.ground_temperature_4000_weatherfile
 
 

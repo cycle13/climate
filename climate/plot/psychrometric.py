@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from climate.compute.psychrometrics import humidity_ratio_from_vapor_pressure, humidity_ratio_from_relative_humidity, \
-    humidity_ratio_from_enthalpy, moist_air_enthalpy, moist_air_volume, dew_point_from_vapor_pressue, \
+from climate.compute.psychrometrics import humidity_ratio_from_partial_vapor_pressure, humidity_ratio_from_relative_humidity, \
+    humidity_ratio_from_enthalpy_moist_air, enthalpy_from_moist_air, specific_volume_from_moist_air, dew_point_temperature_from_vapor_pressue, \
     dry_bulb_temperature_from_enthalpy, \
     wet_bulb_temperature_from_humidity_ratio, saturation_vapor_pressure, degree_of_saturation, \
     vapor_pressure_from_humidity_ratio
@@ -38,12 +38,12 @@ def psychrometric(self, bins=50, cmap="Greys", tone_color="k", save=False):
     [ax.spines[spine].set_color(tone_color) for spine in ['bottom', 'right']]
 
     # Plot constant lines for Dry-Bulb Temperature
-    saturation_humidity_ratio = humidity_ratio_from_vapor_pressure(saturation_vapor_pressure(dbt_range), pressure)
+    saturation_humidity_ratio = humidity_ratio_from_partial_vapor_pressure(saturation_vapor_pressure(dbt_range), pressure)
     min_humidity_ratio = np.repeat(hr_range[0], len(saturation_humidity_ratio))
     ax.plot([dbt_range, dbt_range], [min_humidity_ratio, saturation_humidity_ratio], color=tone_color, alpha=0.5, lw=0.5, zorder=8)
 
     # Plot constant lines for Humidity Ratio
-    min_x = dew_point_from_vapor_pressue(dbt_range[-1], vapor_pressure_from_humidity_ratio(hr_range, pressure))
+    min_x = dew_point_temperature_from_vapor_pressue(dbt_range[-1], vapor_pressure_from_humidity_ratio(hr_range, pressure))
     max_x = np.repeat(dbt_range[-1], len(min_x))
     ax.plot([min_x, max_x], [hr_range, hr_range], color=tone_color, alpha=0.5, lw=0.5, zorder=8)
 
