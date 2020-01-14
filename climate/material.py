@@ -13,6 +13,18 @@ class OpaqueMaterial(object):
     """
 
     def __init__(self, conductivity, volumetric_heat_capacity, specific_heat_capacity, reflectivity, emissivity, thickness=1, roughness="Medium rough"):
+
+        # Sense check
+        if emissivity <= 0 or emissivity > 1:
+            raise Exception('emissivity should be > 0 and < 1')
+
+        if roughness not in ["Very rough", "Rough", "Medium rough", "Medium smooth", "Smooth", "Very smooth"]:
+            raise Exception(
+                'ground_roughness should be one of "Very rough", "Rough", "Medium rough", "Medium smooth", "Smooth", "Very smooth"')
+
+        if reflectivity <= 0 or reflectivity > 1:
+            raise Exception('reflectivity should be > 0 and < 1')
+
         self.conductivity = conductivity
         self.volumetric_heat_capacity = volumetric_heat_capacity # [J/kg.K] for UWG material default
         self.reflectivity = reflectivity

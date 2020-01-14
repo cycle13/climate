@@ -374,7 +374,7 @@ class Weather(object):
     #         annual_ground_temperature_at_depth(self, depth=0.5)
     #
     #         # Interpolate ground temperatures from loaded weatherfile
-    #         weatherfile_ground_temperatures(self)
+    #         interpolate_ground_temperature(self)
     #
     #     if pedestrian_wind:
     #         # Calculate pedestrian height wind speed (at 1.5m above ground)

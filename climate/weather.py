@@ -3,8 +3,18 @@ import pickle
 from io import StringIO
 import pandas as pd
 
-from .constants import DATETIME_INDEX
-from .helpers import slugify
+from .constants import DATETIME_INDEX, REINHART_PATCH_CENTROIDS, TREGENZA_PATCH_CENTROIDS, REINHART_PATCH_VECTORS, \
+    REINHART_PATCH_COUNT, TREGENZA_PATCH_VECTORS, TREGENZA_PATCH_COUNT
+from .helpers import slugify, chunk
+from .psychrometrics import *
+from .wind import *
+from .sun import sun_position, create_sky_matrices
+from .material import OpaqueMaterial
+
+
+def read_pickle(pickle_path=None):
+    return pickle.load(open(pickle_path, "rb"))
+
 
 class Weather(object):
 
@@ -102,6 +112,19 @@ class Weather(object):
 
             print("EPW loaded: {}".format(self.file_path))
 
+            # The following lines automatically run to generate downstream variables
+            self.calculate_psychrometrics()
+            self.interpolate_ground_temperature()
+            self.calculate_pedestrian_wind_speed()
+            self.generate_sky_matrix()
+
+            #
+            # try:
+            #     # Run psychrometrics on loaded EPW data
+            #     self.calculate_psychrometrics()
+            # except Exception as error:
+            #     print("Looks like there isn't enough data to derive psychrometrics\n{}".format(error))
+
         return self
 
     def to_df(self):
@@ -167,5 +190,58 @@ class Weather(object):
         pickle.dump(self, open(self.pickle_path, "wb"))
         print("Object pickled: {0:}".format(self.pickle_path))
 
-    def read_pickle(self, pickle_path=None):
-        return pickle.load(open(pickle_path, "rb"))
+    def interpolate_ground_temperature(self):
+        # Get the ground temperatures from the EPW file per month
+        g_temps = {}
+        for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], n=16, method="size"))):
+            g_temps[float(n)] = [float(j) for j in i[4:]]
+        df = pd.DataFrame.from_dict(g_temps)
+        df.index = pd.Series(index=self.index).resample("MS").mean().index
+        df = pd.concat([pd.DataFrame(index=self.index), df], axis=1)
+        df.columns = ["ground_temperature_500", "ground_temperature_2000", "ground_temperature_4000"]
+        df.iloc[-1, :] = df.iloc[0, :]  # Assign start temp to last datetime
+        df.interpolate(inplace=True)  # Fill in the gaps
+        [setattr(self, col, df[col]) for col in df]
+        return self
+
+    def calculate_pedestrian_wind_speed(self, source_wind_height=10, target_wind_height=1.5, terrain_roughness="Airport runway areas", log_method=True):
+        self.pedestrian_wind_speed = pd.Series(name="pedestrian_wind_speed", index=self.index, data=wind_speed_at_height(self.wind_speed, source_wind_height, target_wind_height, terrain_roughness, log_method))
+        return self
+
+    def calculate_psychrometrics(self):
+        self.humidity_ratio = pd.Series(index=self.index, data=humidity_ratio_from_relative_humidity(self.dry_bulb_temperature, self.relative_humidity / 100, self.atmospheric_station_pressure))
+        self.wet_bulb_temperature = pd.Series(index=self.index, data=wet_bulb_temperature_from_humidity_ratio(self.dry_bulb_temperature, self.humidity_ratio, self.atmospheric_station_pressure))
+        self.partial_vapour_pressure_moist_air = pd.Series(index=self.index, data=vapor_pressure_from_humidity_ratio(self.humidity_ratio, self.atmospheric_station_pressure))
+        self.enthalpy = pd.Series(index=self.index, data=enthalpy_from_moist_air(self.dry_bulb_temperature, self.humidity_ratio))
+        self.specific_volume_moist_air = pd.Series(index=self.index, data=specific_volume_from_moist_air(self.dry_bulb_temperature, self.humidity_ratio, self.atmospheric_station_pressure))
+        self.degree_of_saturation = pd.Series(index=self.index, data=degree_of_saturation(self.dry_bulb_temperature, self.humidity_ratio, self.atmospheric_station_pressure))
+
+        return self
+
+    def calculate_sun_position(self):
+
+        df = sun_position(self.index, self.latitude, self.longitude)
+        [setattr(self, col, df[col]) for col in df]
+        return self
+
+    def generate_sky_matrix(self, reinhart=True):
+
+        # Create WEA file
+        self.to_wea()
+
+        # Calculate sky matrices
+        self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = create_sky_matrices(self.wea_path, reinhart=reinhart)
+
+        # Set the other descriptors for the sky patches
+        self.sky_matrix_patch_centroids = REINHART_PATCH_CENTROIDS if reinhart else TREGENZA_PATCH_CENTROIDS
+        self.sky_matrix_patch_vectors = REINHART_PATCH_VECTORS if reinhart else TREGENZA_PATCH_VECTORS
+        self.sky_matrix_patch_count = REINHART_PATCH_COUNT if reinhart else TREGENZA_PATCH_COUNT
+
+        return self
+
+    def calculate_mrt(self, method="openfield", ground_material=None):
+
+        # if ground_material is None:
+        #     ground_material = OpaqueMaterial(specific_heat_capacity=, reflectivity=, emissivity=, thickness=, roughness="Medium rough")
+        return self
+
