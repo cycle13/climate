@@ -122,6 +122,7 @@ def normalise_rgb(rgb_color):
         interpreted_color = rgb_color
     return interpreted_color
 
+
 def denormalise_rgb(rgb_color):
     if sum([i < 1 for i in rgb_color]) > 1:
         warnings.warn("\n    Input color may be interpreted incorrectly as the composite RGB values are all less than 1. It's probably worth checking it's correct!", Warning)

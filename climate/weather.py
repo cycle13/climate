@@ -9,6 +9,7 @@ from .helpers import slugify, chunk
 from .psychrometrics import *
 from .wind import *
 from .sun import sun_position, create_sky_matrices
+from .ground import interpolate_epw_ground_temperatures
 from .material import OpaqueMaterial
 
 
@@ -112,18 +113,18 @@ class Weather(object):
 
             print("EPW loaded: {}".format(self.file_path))
 
-            # The following lines automatically run to generate downstream variables
-            self.calculate_psychrometrics()
-            self.interpolate_ground_temperature()
-            self.calculate_pedestrian_wind_speed()
-            self.generate_sky_matrix()
+        # The following lines automatically run to generate downstream variables
+        self.calculate_psychrometrics()
+        self.interpolate_ground_temperature()
+        self.calculate_pedestrian_wind_speed()
+        self.generate_sky_matrix()
 
-            #
-            # try:
-            #     # Run psychrometrics on loaded EPW data
-            #     self.calculate_psychrometrics()
-            # except Exception as error:
-            #     print("Looks like there isn't enough data to derive psychrometrics\n{}".format(error))
+        #
+        # try:
+        #     # Run psychrometrics on loaded EPW data
+        #     self.calculate_psychrometrics()
+        # except Exception as error:
+        #     print("Looks like there isn't enough data to derive psychrometrics\n{}".format(error))
 
         return self
 
@@ -191,16 +192,7 @@ class Weather(object):
         print("Object pickled: {0:}".format(self.pickle_path))
 
     def interpolate_ground_temperature(self):
-        # Get the ground temperatures from the EPW file per month
-        g_temps = {}
-        for n, i in enumerate(list(chunk(self.ground_temperatures.split(",")[1:], n=16, method="size"))):
-            g_temps[float(n)] = [float(j) for j in i[4:]]
-        df = pd.DataFrame.from_dict(g_temps)
-        df.index = pd.Series(index=self.index).resample("MS").mean().index
-        df = pd.concat([pd.DataFrame(index=self.index), df], axis=1)
-        df.columns = ["ground_temperature_500", "ground_temperature_2000", "ground_temperature_4000"]
-        df.iloc[-1, :] = df.iloc[0, :]  # Assign start temp to last datetime
-        df.interpolate(inplace=True)  # Fill in the gaps
+        df = interpolate_epw_ground_temperatures(self.ground_temperatures, self.index)
         [setattr(self, col, df[col]) for col in df]
         return self
 
