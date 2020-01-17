@@ -31,12 +31,34 @@ def generate_numerous_vectors(samples=1000):
     x = np.cos(phi) * r
     z = np.sin(phi) * r
     vector = np.array([x, y, z]).T
-    theta = np.fabs(np.arctan(z / np.sqrt(np.power(x, 2) + np.power(y, 2))))
-    sky = z > 0
-    return vector, theta, sky
+    return vector
 
 
-def sky_view_factor(altitude, is_sky):
+def vector_horizon_angle(vector):
+    """
+    Returns the angle between a given vector or vectors, and the horizon. +Ve for vectors above horizon
+
+    Parameters
+    ----------
+    vector : ndarray
+        3 dimensional vector or array of vectors
+
+    Returns
+    -------
+    angle : float
+        Angle between input vector/s and z0 plane
+    """
+    vector = np.array(vector)
+    if len(vector.shape) == 1:
+        return np.arctan(vector[2] / np.sqrt(np.power(vector[0], 2) + np.power(vector[1], 2)))
+    else:
+        angles = []
+        for vec in vector:
+            angles.append(np.arctan(vec[2] / np.sqrt(np.power(vec[0], 2) + np.power(vec[1], 2))))
+        return np.array(angles)
+
+
+def sky_view_factor(vectors, shading_geometry=None):
     """
     Calculate the sky view factor between source and sample vector (including below horizon effects.
 
@@ -54,10 +76,21 @@ def sky_view_factor(altitude, is_sky):
     sky_view_factor : array(float)
         Sky view factor value
     """
+
+    if shading_geometry is not None:
+        raise NotImplementedError("Not yet implemented!")
+
     az = np.pi / 4  # 45 degrees
-    sky_view_factor = np.where(is_sky, 0.0355 * np.sin(altitude) + 2.33 * np.cos(altitude) * np.sqrt(
+    altitude = vector_horizon_angle(vectors)
+    sky_view_factor = np.where(altitude > 0, 0.0355 * np.sin(altitude) + 2.33 * np.cos(altitude) * np.sqrt(
         0.0213 * np.power(np.cos(az), 2) + 0.0091 * np.power(np.sin(az), 2)), 0)
     return sky_view_factor
+
+
+def incident_radiation_at_angle(radiation, angle, degrees=False):
+    return np.sin(np.radians(angle)) * radiation if degrees else np.sin(angle) * radiation
+
+# TODO - Add method for squuare metre radiation calculating incidernt radiaiton total from all sky patch vectors and readaiton values
 
 
 def radiation_on_square_metre(sample_vectors_altitude, sample_vectors_is_sky, sample_vector_radiation):

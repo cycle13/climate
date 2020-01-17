@@ -164,9 +164,7 @@ def generate_numerous_vectors(samples=1000):
     x = np.cos(phi) * r
     z = np.sin(phi) * r
     vector = np.array([x, y, z]).T
-    theta = np.fabs(np.arctan(z / np.sqrt(np.power(x, 2) + np.power(y, 2))))
-    sky = z > 0
-    return vector, theta, sky
+    return vector
 
 
 def sky_view_factor(altitude, is_sky):
