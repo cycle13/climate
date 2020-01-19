@@ -4,10 +4,41 @@ import subprocess
 import pandas as pd
 import numpy as np
 from pvlib.solarposition import get_solarposition
+from scipy import spatial
 
 from .constants import REINHART_PATCH_CONVERSION_FACTOR, TREGENZA_PATCH_CONVERSION_FACTOR
 from .helpers import chunk
 
+
+class SkyMatrix(object):
+
+    def __init__(self, m_type="Reinhart"):
+        self.patch_vectors = None
+        self._type = None
+
+    def closest_point(source_points, target_points, n_closest=1):
+        """
+        Find the closest n-points within a set of target points from a set of source points.
+
+        Parameters
+        ----------
+        source_points : array(x, y, z)
+            Set of source points which will be used
+        target_points : array(x, y, z)
+            Set of target points which will be assessed for proximity
+        n_closest : int
+            The number of "near" points to return
+
+        Returns
+        -------
+        target_distances : array(float)
+            Distance between each source point and nearest target point/s
+        target_indices : array(int)
+            Indices of each target point near to the source point/s
+
+        """
+
+        return spatial.KDTree(target_points).query(source_points, n_closest)
 
 def sun_position(datetime, latitude, longitude):
     """

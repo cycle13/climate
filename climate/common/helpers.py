@@ -297,5 +297,5 @@ def closest_point(source_points, target_points, n_closest=1):
         Indices of each target point near to the source point/s
 
     """
-    target_distances, target_indices = spatial.KDTree(target_points).query(source_points, n_closest)
-    return target_distances, target_indices
+
+    return spatial.KDTree(target_points).query(source_points, n_closest)
