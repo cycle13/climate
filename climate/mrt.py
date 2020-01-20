@@ -6,7 +6,7 @@ from .material import OpaqueMaterial
 
 # from .constants import KELVIN, STEFAN_BOLTZMANN_CONSTANT
 
-def generate_numerous_vectors(samples=1000):
+def fibonacci_sphere(samples=1000):
     """
     Create a set of rays from a point source
 

@@ -4,41 +4,51 @@ import subprocess
 import pandas as pd
 import numpy as np
 from pvlib.solarposition import get_solarposition
-from scipy import spatial
+from scipy.interpolate import LinearNDInterpolator
 
-from .constants import REINHART_PATCH_CONVERSION_FACTOR, TREGENZA_PATCH_CONVERSION_FACTOR
+from .constants import REINHART_PATCH_CONVERSION_FACTOR, TREGENZA_PATCH_CONVERSION_FACTOR, REINHART_PATCH_VECTORS, TREGENZA_PATCH_VECTORS
 from .helpers import chunk
 
 
 class SkyMatrix(object):
 
-    def __init__(self, m_type="Reinhart"):
-        self.patch_vectors = None
-        self._type = None
+    def __init__(self, wea_file=None, reinhart=True):
 
-    def closest_point(source_points, target_points, n_closest=1):
-        """
-        Find the closest n-points within a set of target points from a set of source points.
+        self.wea_file = wea_file
+        self.reinhart = reinhart
 
-        Parameters
-        ----------
-        source_points : array(x, y, z)
-            Set of source points which will be used
-        target_points : array(x, y, z)
-            Set of target points which will be assessed for proximity
-        n_closest : int
-            The number of "near" points to return
+        self.patch_vectors = REINHART_PATCH_VECTORS if reinhart else TREGENZA_PATCH_VECTORS
+        self.patch_centroids = self.patch_vectors
+        self.patch_conversion_factor = REINHART_PATCH_CONVERSION_FACTOR if reinhart else TREGENZA_PATCH_CONVERSION_FACTOR
 
-        Returns
-        -------
-        target_distances : array(float)
-            Distance between each source point and nearest target point/s
-        target_indices : array(int)
-            Indices of each target point near to the source point/s
+        self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = create_sky_matrices(self.wea_file, reinhart=self.reinhart)
 
-        """
+    def resample_total_sky_matrix(self, sample_point):
+        return LinearNDInterpolator(self.patch_centroids, self.total_sky_matrix.T)(sample_point).T
 
-        return spatial.KDTree(target_points).query(source_points, n_closest)
+def closest_point(source_points, target_points, n_closest=1):
+    """
+    Find the closest n-points within a set of target points from a set of source points.
+
+    Parameters
+    ----------
+    source_points : array(x, y, z)
+        Set of source points which will be used
+    target_points : array(x, y, z)
+        Set of target points which will be assessed for proximity
+    n_closest : int
+        The number of "near" points to return
+
+    Returns
+    -------
+    target_distances : array(float)
+        Distance between each source point and nearest target point/s
+    target_indices : array(int)
+        Indices of each target point near to the source point/s
+
+    """
+
+    return spatial.KDTree(target_points).query(source_points, n_closest)
 
 def sun_position(datetime, latitude, longitude):
     """
