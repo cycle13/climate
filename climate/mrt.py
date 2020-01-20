@@ -137,12 +137,12 @@ def incident_radiation_at_angle(radiation, angle, degrees=False):
 #  - Total square metre radiation calculating incidernt radiaiton total from all sky patch vectors and radaiton values
 
 
-# def resample_sky_matrix(sky_matrix, source_points, target_points, n_closest=1):
-#     nv_dist, nv_idx = closest_point(source_points, target_points, n_closest=n_closest)
+# def resample_sky_matrix(sky_matrix, source_points, existing_points, n_closest=1):
+#     nv_dist, nv_idx = closest_point(source_points, existing_points, n_closest=n_closest)
 #     sample_vector_radiation = []
 #     for total_sky_matrix_hour in sky_matrix:
 #         n_values = (total_sky_matrix_hour[nv_idx] * nv_dist).sum(axis=1) / nv_dist.sum(axis=1)
-#         n_values = np.where(target_points[:, 2] <= 0, 0, n_values)  # Replace values where vectors are below ground
+#         n_values = np.where(existing_points[:, 2] <= 0, 0, n_values)  # Replace values where vectors are below ground
 #         total_sky_matrix_hour_radiation = sum(total_sky_matrix_hour)  # Total hourly radiation from original sky matrix
 #         resampled_sky_matrix_hour_radiation = sum(n_values)  # Total hourly radiation from sampled sky matrix
 #         sample_vector_radiation.append(
