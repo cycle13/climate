@@ -4,9 +4,10 @@ import subprocess
 import pandas as pd
 import numpy as np
 from pvlib.solarposition import get_solarposition
-from scipy.interpolate import LinearNDInterpolator
 
-from .constants import REINHART_PATCH_CONVERSION_FACTOR, TREGENZA_PATCH_CONVERSION_FACTOR, REINHART_PATCH_VECTORS, TREGENZA_PATCH_VECTORS
+from .geometry import closest_point
+from .constants import REINHART_PATCH_CONVERSION_FACTOR, TREGENZA_PATCH_CONVERSION_FACTOR, REINHART_PATCH_VECTORS, \
+    TREGENZA_PATCH_VECTORS, KELVIN
 from .helpers import chunk
 
 
@@ -23,32 +24,71 @@ class SkyMatrix(object):
 
         self.direct_sky_matrix, self.diffuse_sky_matrix, self.total_sky_matrix = create_sky_matrices(self.wea_file, reinhart=self.reinhart)
 
-    def resample_total_sky_matrix(self, sample_point):
-        return LinearNDInterpolator(self.patch_centroids, self.total_sky_matrix.T)(sample_point).T
+    def resample(self, sample_points, _type="total", n_closest=3):
+        matrix = self.direct_sky_matrix if _type == "direct" else self.diffuse_sky_matrix if _type == self.diffuse_sky_matrix else self.total_sky_matrix
+        return resample_sky_matrix(sample_points, self.patch_centroids, matrix, n_closest=n_closest)
 
-def closest_point(source_points, target_points, n_closest=1):
+
+def resample_sky_matrix(sample_points, known_points, known_values, n_closest=3):
+    sample_distances, sample_indices = closest_point(sample_points, known_points, n_closest=n_closest)
+
+    sample_values = []
+    for hour in known_values:
+        n_values = (hour[sample_indices] * sample_distances).sum(axis=1) / sample_distances.sum(axis=1)
+        n_values = np.where(sample_points[:, 2] <= 0, 0,
+                            n_values)  # Replace values where vectors are below ground
+        known_total_hour_radiation = sum(hour)  # Total hourly radiation from original sky matrix
+        sampled_total_hour_radiation = sum(n_values)  # Total hourly radiation from sampled sky matrix
+        sample_values.append(
+            np.where(n_values != 0, n_values / sampled_total_hour_radiation * known_total_hour_radiation, 0))
+
+    return np.array(sample_values)
+
+
+def sky_emissivity(dew_point_temperature, total_sky_cover):
     """
-    Find the closest n-points within a set of target points from a set of source points.
+    Calculate the sky emissivity using the Clark-Allen method used by EnergyPlus.
+
+    Clark and Allen report that the standard estimation error for the atmospheric long-wave radiation was 10 𝑊𝑊/𝑚𝑚2.
 
     Parameters
     ----------
-    source_points : array(x, y, z)
-        Set of source points which will be used
-    target_points : array(x, y, z)
-        Set of target points which will be assessed for proximity
-    n_closest : int
-        The number of "near" points to return
+    dew_point_temperature : float
+        Dew-point temperature of air in degrees C
+    total_sky_cover : int
+        Total sky cover in tenths. Conversion to decimal 0-1 happens within the method.
 
     Returns
     -------
-    target_distances : array(float)
-        Distance between each source point and nearest target point/s
-    target_indices : array(int)
-        Indices of each target point near to the source point/s
+    sky_emissivity : float
 
     """
 
-    return spatial.KDTree(target_points).query(source_points, n_closest)
+    sky_emissivity = (0.787 + 0.764 * np.log((dew_point_temperature + KELVIN) / KELVIN)) * (
+            1 + 0.0224 * total_sky_cover - 0.0035 * np.power(total_sky_cover, 2) + 0.0028 * np.power(
+        total_sky_cover, 3))
+    return sky_emissivity
+
+
+def incident_radiation_at_angle(radiation, angle, degrees=False):
+    """
+    Returns radiation reduced by angle of incidence
+
+    Parameters
+    ----------
+    radiation : float
+        Radiation flux in W/m2
+    angle : float
+        Angle of incidence (in either degrees or radians in conjunction with flag)
+    degrees : bool
+        True if angle passed in in degrees, False if angle passed is in radians
+
+    Returns
+    -------
+    Factored input radiance by angle of incidence reduction
+    """
+    return np.sin(np.radians(angle)) * radiation if degrees else np.sin(angle) * radiation
+
 
 def sun_position(datetime, latitude, longitude):
     """

@@ -8,7 +8,7 @@ from .constants import DATETIME_INDEX, REINHART_PATCH_CENTROIDS, TREGENZA_PATCH_
 from .helpers import slugify, chunk
 from .psychrometrics import *
 from .wind import *
-from .sun import sun_position, create_sky_matrices
+from .sky import sun_position, create_sky_matrices
 from .ground import interpolate_epw_ground_temperatures
 from .material import OpaqueMaterial
 
@@ -117,7 +117,7 @@ class Weather(object):
         self.calculate_psychrometrics()
         self.interpolate_ground_temperature()
         self.calculate_pedestrian_wind_speed()
-        self.generate_sky_matrix()
+        # self.generate_sky_matrix()
 
         #
         # try:
@@ -164,6 +164,7 @@ class Weather(object):
             f.write(header + "\n" + "\n".join(values) + "\n")
 
         print("WEA file created: {0:}".format(self.wea_path))
+        return self.wea_path
 
     def to_csv(self, csv_path=None):
         """

@@ -1,7 +1,26 @@
 import pandas as pd
 import numpy as np
 
+from .geometry import vector_horizon_angle
 from .helpers import chunk
+
+
+def ground_radiation_flux(sky_dome_points, sky_dome_annual_radiation):
+    """
+
+    Parameters
+    ----------
+    sky_dome_points : ndArray
+        Array of points arranged across a sky dome
+    sky_dome_annual_radiation
+        Array of radiation values, corresponding to the number of points and each hour in the year
+
+    Returns
+    -------
+    ground_radiation_flux
+        Annual hourly radiation flux
+    """
+    return np.sin(vector_horizon_angle(sky_dome_points)[sky_dome_points[:, 2] > 0]) * sky_dome_annual_radiation[:, sky_dome_points[:, 2] > 0].sum(axis=1)
 
 
 def interpolate_epw_ground_temperatures(ground_teperature_string, datetime_index):
