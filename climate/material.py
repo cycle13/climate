@@ -3,7 +3,7 @@ import numpy as np
 from .constants import STEFAN_BOLTZMANN_CONSTANT, KELVIN
 
 
-class OpaqueMaterial(object):
+class Material(object):
     """ Material class with thermal properties
 
     Attributes:

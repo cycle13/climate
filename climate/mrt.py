@@ -2,7 +2,7 @@ import numpy as np
 from scipy import spatial
 
 from .sky import sky_emissivity
-from .material import OpaqueMaterial
+from .material import Material
 
 # from .constants import KELVIN, STEFAN_BOLTZMANN_CONSTANT
 

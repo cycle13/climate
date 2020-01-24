@@ -179,7 +179,7 @@ def unit_vector(vector):
 
     Returns
     -------
-    unit_vector : ndarray
+    normalise_vector : ndarray
         The unitized form of the input vector
     """
     return vector / np.linalg.norm(vector)

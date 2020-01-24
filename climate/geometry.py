@@ -1,7 +1,16 @@
 import numpy as np
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree, Delaunay
 from scipy.interpolate import LinearNDInterpolator
+from scipy.spatial import Delaunay
 
+class Polygon(object):
+    def __init__(self):
+        self.vertices = None
+
+
+class Geometry(object):
+    def __init__(self, Material):
+        self.yes = None
 
 # Point/vector methods
 
@@ -76,7 +85,19 @@ def closest_point(sample_points, existing_points, n_closest=1):
     return KDTree(existing_points).query(sample_points, n_closest)
 
 
-def unit_vector(vector):
+def unit_vector(start, end):
+    """
+    Returns the unit vector of a line described by its start and end points
+    :type start: [x, y] coordinate array
+    :type end: [x, y] coordinate array
+    :return: [x, y] vector array
+    """
+    pt_distance = np.array(end) - np.array(start)
+    vector = pt_distance / np.sqrt(np.sum(pt_distance * pt_distance))
+    return vector
+
+
+def normalise_vector(vector):
     """
     Returns the angle between vectors 'v1' and 'v2'
 
@@ -87,7 +108,7 @@ def unit_vector(vector):
 
     Returns
     -------
-    unit_vector : ndarray
+    normalise_vector : ndarray
         The unitized form of the input vector
     """
     return vector / np.linalg.norm(vector)
@@ -111,8 +132,8 @@ def angle_between(v1, v2, degrees=False):
     angle : float
         The angle between the passed vectors
     """
-    v1_u = unit_vector(v1)
-    v2_u = unit_vector(v2)
+    v1_u = normalise_vector(v1)
+    v2_u = normalise_vector(v2)
     angle = np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
     if degrees:
         return np.degrees(angle)
@@ -168,4 +189,78 @@ def view_factor(vector, shading_geometry=None):
     return np.where(altitude > 0, 0.0355 * np.sin(altitude) + 2.33 * np.cos(altitude) * np.sqrt(
         0.0213 * np.power(np.cos(az), 2) + 0.0091 * np.power(np.sin(az), 2)), 0)
 
+## TRIANGULATION
+
+def translated_point(uv, uw, origin, point):
+    """
+    Translates a 3D point into a 2D point
+    :type uv: array
+    :type uw: array
+    :type origin: array
+    :type point: array
+    :return: array
+    """
+    x = (point[0] - origin[0]) * uv[0] + (point[1] - origin[1]) * uv[1] + (point[2] - origin[2]) * uv[2]
+    y = (point[0] - origin[0]) * uw[0] + (point[1] - origin[1]) * uw[1] + (point[2] - origin[2]) * uw[2]
+    return x, y
+
+
+def untranslated_point(uv, uw, origin, point):
+    """
+    Translates a 2D point into a 3D point
+    :type uv: array
+    :type uw: array
+    :type origin: array
+    :type point: array
+    :return: array
+    """
+    x = origin[0] + uv[0] * point[0] + uw[0] * point[1]
+    y = origin[1] + uv[1] * point[0] + uw[1] * point[1]
+    z = origin[2] + uv[2] * point[0] + uw[2] * point[1]
+    return x, y, z
+
+
+def triangulate_3d_surfaces(parent_surface_vertices, child_surfaces_vertices):
+    """
+    Returns a set of vertices describing the delaunay mesh of a parent surface minus the child surfaces
+    :type parent_surface_vertices: array
+    :type child_surfaces_vertices: array
+    :return: array
+    """
+    uv = unit_vector(parent_surface_vertices[0], parent_surface_vertices[1])
+    uw = unit_vector(parent_surface_vertices[0], parent_surface_vertices[3])
+
+    parent_surface_vertices_translated = np.array(
+        [translated_point(uv, uw, parent_surface_vertices[0], i) for i in parent_surface_vertices])
+    child_surfaces_vertices_translated = np.array(
+        [[translated_point(uv, uw, parent_surface_vertices[0], i) for i in ch] for ch in child_surfaces_vertices])
+
+    parent_points = parent_surface_vertices_translated
+    child_points = [item for sublist in child_surfaces_vertices_translated for item in sublist]
+
+    points = np.concatenate([parent_points, child_points])
+    tri = Delaunay(points).simplices.copy()
+
+    mask = []
+    for face_pts in points[tri]:
+        n = []
+        for child_pts in child_surfaces_vertices_translated:
+            n.append(len(np.array([x for x in set(tuple(x) for x in face_pts) & set(tuple(x) for x in child_pts)])))
+        if 3 in n:
+            mask.append(False)
+        else:
+            mask.append(True)
+
+    triangulated_surface_vertices = []
+    for i in points[tri][mask]:
+        mm = []
+        for j in i:
+            mm.append(untranslated_point(uv, uw, parent_surface_vertices[0], j))
+        triangulated_surface_vertices.append(mm)
+
+    return np.array(triangulated_surface_vertices)
+
+# Geometry to Radiance methods
+# Geometry to Radiance with Material methods
+# Proper geometry object polygon thing
 

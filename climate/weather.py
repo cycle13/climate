@@ -10,7 +10,7 @@ from .psychrometrics import *
 from .wind import *
 from .sky import sun_position, create_sky_matrices
 from .ground import interpolate_epw_ground_temperatures
-from .material import OpaqueMaterial
+from .material import Material
 
 
 def read_pickle(pickle_path=None):
