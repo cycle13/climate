@@ -1,40 +1,50 @@
 import numpy as np
+import uuid
 
 from .constants import STEFAN_BOLTZMANN_CONSTANT, KELVIN
 
 
 class Material(object):
-    """ Material class with thermal properties
-
-    Attributes:
-        conductivity: Thermal conductivity (W/m K)
-        volumetric_heat_capacity: Volumetric heat capacity (J/m^3 K)
-        name: Name of the material.
-    """
-
-    def __init__(self, conductivity, volumetric_heat_capacity, specific_heat_capacity, reflectivity, emissivity, thickness=1, roughness="Medium rough", name=None):
+    def __init__(self, thickness: float = 0.1, roughness: str = "MediumRough", conductivity: float = 0.75,
+                 density: float = 2243, specific_heat_capacity: float = 900, reflectivity: float = 0.05, transmissivity: float = 0,
+                 emissivity: float = 0.93):
 
         # Sense check
-        if emissivity <= 0 or emissivity > 1:
-            raise Exception(
-                'emissivity should be > 0 and < 1')
+        roughnesses = ["VeryRough", "Rough", "MediumRough", "MediumSmooth", "Smooth", "VerySmooth"]
+        if roughness not in roughnesses:
+            raise Exception('Roughness should be one of {}'.format(str(roughnesses)))
 
-        if roughness not in ["Very rough", "Rough", "Medium rough", "Medium smooth", "Smooth", "Very smooth"]:
-            raise Exception(
-                'ground_roughness should be one of "Very rough", "Rough", "Medium rough", "Medium smooth", "Smooth", "Very smooth"')
+        if not 0.003 < thickness <= 1:
+            raise Exception('Thickness should be > 0.003 and <= 1')
 
-        if reflectivity <= 0 or reflectivity > 1:
-            raise Exception(
-                'reflectivity should be > 0 and < 1')
+        if not 0.01 < conductivity <= 5:
+            raise Exception('Conductivity should be > 0.01 and <= 5')
 
-        self.conductivity = conductivity
-        self.volumetric_heat_capacity = volumetric_heat_capacity # [J/kg.K] for UWG material default
-        self.reflectivity = reflectivity
-        self.roughness = roughness
-        self.emissivity = emissivity
-        self.specific_heat_capacity = specific_heat_capacity # [kJ/kg.K]
+        if not 10 < density <= 8000:
+            raise Exception('Density should be > 10 and <= 8000')
+
+        if not 200 < specific_heat_capacity <= 2000:
+            raise Exception('Density should be > 200 and <= 2000')
+
+        if not 0 < reflectivity < 1:
+            raise Exception('Reflectivity should be > 0 and < 1')
+
+        if not 0 <= transmissivity < 1:
+            raise Exception('Transmissivity should be > 0 and < 1')
+
+        if not 0 < emissivity < 1:
+            raise Exception('Emissivity should be > 0 and < 1')
+
+        self.guid = str(uuid.uuid4())
         self.thickness = thickness
-        self.name = name
+        self.roughness = roughness
+        self.conductivity = conductivity
+        self.density = density
+        self.specific_heat_capacity = specific_heat_capacity
+        self.reflectivity = reflectivity
+        self.transmissivity = transmissivity
+        self.absorptivity = 1 - reflectivity - transmissivity
+        self.emissivity = emissivity  # in E+ as thermal absorptance
 
     def exterior_heat_transfer_coefficient(self, local_wind_speed):
         return exterior_heat_transfer_coefficient(self.roughness, local_wind_speed)
@@ -42,8 +52,21 @@ class Material(object):
     def surface_temperature(self, dry_bulb_temperature, local_wind_speed, radiation_flux, material_temperature,  kelvin=False):
         return surface_temperature(dry_bulb_temperature, local_wind_speed, radiation_flux, material_temperature, self.reflectivity, self.emissivity, self.specific_heat_capacity, self.thickness, self.roughness, kelvin=kelvin)
 
+    def to_rad_string(self):
+        return rad_string_plastic(id=self.guid, reflectivity=self.reflectivity) if self.transmissivity == 0 else rad_string_trans(id=self.guid, transmissivity=self.transmissivity, specularity=1.52)
+
     def __repr__(self):
-        return "Material: '{0:}', Thickness: {1:} [m], Reflectivity: {2:} [0-1], Emissivity: {3:} [0-1], Roughness: '{4:}' [enum], Conductivity: {5:} [W/mK], Volumetric heat capacity: {6:} [J/kgK], Specific heat capacity: {7:} [kJ/kgK]".format(self.name, self.thickness, self.reflectivity, self.emissivity, self.roughness, self.conductivity, self.volumetric_heat_capacity, self.specific_heat_capacity)
+        return_string = "Material: \n"
+        for k, v in self.__dict__.items():
+            return_string += "- {}: {}\n".format(k.title(), v)
+        return return_string
+
+def rad_string_plastic(id: str=str(uuid.uuid4()), reflectivity: float=0.5):
+    return "void plastic {0:}\n0\n0\n5 {1:} {1:} {1:} 0.0 0.0".format(id, reflectivity)
+
+
+def rad_string_trans(id: str=str(uuid.uuid4()), transmissivity: float=0.5, specularity: float=1.52):
+    return "void glass {0:}\n0\n0\n4 {1:} {1:} {1:} {2:}".format(id, transmissivity, specularity)
 
 
 def exterior_heat_transfer_coefficient(material_roughness, local_wind_speed):
@@ -69,12 +92,12 @@ def exterior_heat_transfer_coefficient(material_roughness, local_wind_speed):
         The surface heat transfer coefficient for the variables passed
     """
     material = {
-        "Very rough": {"D": 11.58, "E": 5.89, "F": 0},
+        "VeryRough": {"D": 11.58, "E": 5.89, "F": 0},
         "Rough": {"D": 12.49, "E": 4.065, "F": 0.028},
-        'Medium rough': {"D": 10.79, "E": 4.192, "F": 0},
-        'Medium smooth': {"D": 8.23, "E": 4, "F": -0.057},
+        'MediumRough': {"D": 10.79, "E": 4.192, "F": 0},
+        'MediumSmooth': {"D": 8.23, "E": 4, "F": -0.057},
         'Smooth': {"D": 10.22, "E": 3.1, "F": 0},
-        'Very smooth': {"D": 8.23, "E": 3.33, "F": -0.036},
+        'VerySmooth': {"D": 8.23, "E": 3.33, "F": -0.036},
     }
     return material[material_roughness]["D"] + material[material_roughness][
         "E"] * local_wind_speed + material[material_roughness]["F"] * np.power(local_wind_speed, 2)

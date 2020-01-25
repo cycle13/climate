@@ -2,20 +2,45 @@ import numpy as np
 from scipy.spatial import KDTree, Delaunay
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import Delaunay
+import uuid
+import pathlib
+from .material import Material
+
 
 class Polygon(object):
-    def __init__(self):
-        self.vertices = None
+    def __init__(self, outer_vertices: np.ndarray = None, inner_vertices: np.ndarray = None, material: Material = Material()):
+        self.guid = str(uuid.uuid4())
+        self.outer_vertices = outer_vertices
+        self.inner_vertices = inner_vertices
+        self.tri = self.triangulate()
+        self.material = material
+
+    def __repr__(self):
+        return "Polygon:\n- Material: {0:}\n- Tri: {1:} triangulated sub-polygons".format(self.material.guid, len(self.tri))
+
+    def triangulate(self):
+        return triangulate_3d_surfaces(self.outer_vertices, self.inner_vertices)
+
+    def to_rad_string(self):
+        rad_string = []
+        rad_string.append(self.material.to_rad_string())
+        for bp in self.tri:
+            rad_string.append(rad_string_polygon(bp, id=self.guid, material=self.material.guid))
+        return "\n\n".join(rad_string)
 
 
-class Geometry(object):
-    def __init__(self, Material):
-        self.yes = None
+# class Geometry(object):
+#     def __init__(self, polygon: Polygon, material: Material):
+#         self.polygon = polygon
+#         self.material = material
+
 
 # Point/vector methods
+def rad_string_polygon(boundary_points: np.ndarray, id: str=str(uuid.uuid4()), material: str="material_id"):
+    return "{0:} polygon {1:}\n0\n0\n{2:} ".format(id, material, len(boundary_points) / 3) + " ".join([str(i) for i in boundary_points.flatten()])
 
 
-def fibonacci_sphere(n_points=1000, cartesian=True):
+def fibonacci_sphere(n_points: int=1000, cartesian: bool=True):
     """ Create a set of evenly distributed points around a sphere
 
     Parameters
@@ -38,7 +63,7 @@ def fibonacci_sphere(n_points=1000, cartesian=True):
         return np.stack([theta, phi, [1] * n_points])
 
 
-def vector_horizon_angle(vector):
+def vector_horizon_angle(vector: np.ndarray):
     """
     Returns the angle between a given vector or vectors, and the horizon. +Ve for vectors above horizon
 
@@ -62,7 +87,7 @@ def vector_horizon_angle(vector):
         return np.array(angles)
 
 
-def closest_point(sample_points, existing_points, n_closest=1):
+def closest_point(sample_points: np.ndarray, existing_points: np.ndarray, n_closest: int=1):
     """ Find the n-closest points within a set of existing points
 
     Parameters
@@ -85,7 +110,7 @@ def closest_point(sample_points, existing_points, n_closest=1):
     return KDTree(existing_points).query(sample_points, n_closest)
 
 
-def unit_vector(start, end):
+def unit_vector(start: np.ndarray, end: np.ndarray):
     """
     Returns the unit vector of a line described by its start and end points
     :type start: [x, y] coordinate array
@@ -97,7 +122,7 @@ def unit_vector(start, end):
     return vector
 
 
-def normalise_vector(vector):
+def normalise_vector(vector: np.ndarray):
     """
     Returns the angle between vectors 'v1' and 'v2'
 
@@ -114,7 +139,7 @@ def normalise_vector(vector):
     return vector / np.linalg.norm(vector)
 
 
-def angle_between(v1, v2, degrees=False):
+def angle_between(v1: np.ndarray, v2: np.ndarray, degrees: bool=False):
     """
     Returns the angle between vectors 'v1' and 'v2'
 
@@ -162,7 +187,7 @@ def resample_point_values(sample_points, existing_points, existing_values):
     return LinearNDInterpolator(existing_points, existing_values)(sample_points).T
 
 
-def view_factor(vector, shading_geometry=None):
+def view_factor(vector: np.ndarray, shading_geometry=None):
     """
     Calculate the sky view factor between source and sample vector (including below horizon effects.
 
@@ -191,7 +216,7 @@ def view_factor(vector, shading_geometry=None):
 
 ## TRIANGULATION
 
-def translated_point(uv, uw, origin, point):
+def translated_point(uv: np.ndarray, uw: np.ndarray, origin: np.ndarray, point: np.ndarray):
     """
     Translates a 3D point into a 2D point
     :type uv: array
@@ -205,7 +230,7 @@ def translated_point(uv, uw, origin, point):
     return x, y
 
 
-def untranslated_point(uv, uw, origin, point):
+def untranslated_point(uv: np.ndarray, uw: np.ndarray, origin: np.ndarray, point: np.ndarray):
     """
     Translates a 2D point into a 3D point
     :type uv: array
@@ -220,7 +245,7 @@ def untranslated_point(uv, uw, origin, point):
     return x, y, z
 
 
-def triangulate_3d_surfaces(parent_surface_vertices, child_surfaces_vertices):
+def triangulate_3d_surfaces(parent_surface_vertices: np.ndarray, child_surfaces_vertices: np.ndarray=None):
     """
     Returns a set of vertices describing the delaunay mesh of a parent surface minus the child surfaces
     :type parent_surface_vertices: array
@@ -232,27 +257,36 @@ def triangulate_3d_surfaces(parent_surface_vertices, child_surfaces_vertices):
 
     parent_surface_vertices_translated = np.array(
         [translated_point(uv, uw, parent_surface_vertices[0], i) for i in parent_surface_vertices])
-    child_surfaces_vertices_translated = np.array(
-        [[translated_point(uv, uw, parent_surface_vertices[0], i) for i in ch] for ch in child_surfaces_vertices])
+
+    if child_surfaces_vertices is not None:
+        child_surfaces_vertices_translated = np.array(
+            [[translated_point(uv, uw, parent_surface_vertices[0], i) for i in ch] for ch in child_surfaces_vertices])
+    else:
+        child_surfaces_vertices_translated = None
 
     parent_points = parent_surface_vertices_translated
-    child_points = [item for sublist in child_surfaces_vertices_translated for item in sublist]
+    child_points = [item for sublist in child_surfaces_vertices_translated for item in
+                    sublist] if child_surfaces_vertices is not None else None
 
-    points = np.concatenate([parent_points, child_points])
+    points = np.concatenate([parent_points, child_points]) if child_surfaces_vertices is not None else parent_points
     tri = Delaunay(points).simplices.copy()
 
-    mask = []
-    for face_pts in points[tri]:
-        n = []
-        for child_pts in child_surfaces_vertices_translated:
-            n.append(len(np.array([x for x in set(tuple(x) for x in face_pts) & set(tuple(x) for x in child_pts)])))
-        if 3 in n:
-            mask.append(False)
-        else:
-            mask.append(True)
+    if child_surfaces_vertices is not None:
+        mask = []
+        for face_pts in points[tri]:
+            n = []
+            for child_pts in child_surfaces_vertices_translated:
+                n.append(len(np.array([x for x in set(tuple(x) for x in face_pts) & set(tuple(x) for x in child_pts)])))
+            if 3 in n:
+                mask.append(False)
+            else:
+                mask.append(True)
+    else:
+        mask = None
 
     triangulated_surface_vertices = []
-    for i in points[tri][mask]:
+    lm = points[tri][mask] if child_surfaces_vertices is not None else points[tri]
+    for i in lm:
         mm = []
         for j in i:
             mm.append(untranslated_point(uv, uw, parent_surface_vertices[0], j))
