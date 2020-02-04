@@ -8,7 +8,7 @@ from .material import Material
 
 
 class Polygon(object):
-    def __init__(self, outer_vertices: np.ndarray = None, inner_vertices: np.ndarray = None, material: Material = Material()):
+    def __init__(self, outer_vertices: np.ndarray = None, inner_vertices: np.ndarray = None, material: Material = Material(), inner_material: Material = None):
         self.guid = str(uuid.uuid4())
         self.outer_vertices = outer_vertices
         self.inner_vertices = inner_vertices
@@ -18,7 +18,7 @@ class Polygon(object):
     def __repr__(self):
         return "Polygon:\n- Material: {0:}\n- Tri: {1:} triangulated sub-polygons".format(self.material.guid, len(self.tri))
 
-    def triangulate(self):
+    def triangulate(self, inner: bool = False):
         return triangulate_3d_surfaces(self.outer_vertices, self.inner_vertices)
 
     def to_rad_string(self):
@@ -27,12 +27,6 @@ class Polygon(object):
         for bp in self.tri:
             rad_string.append(rad_string_polygon(bp, id=self.guid, material=self.material.guid))
         return "\n\n".join(rad_string)
-
-
-# class Geometry(object):
-#     def __init__(self, polygon: Polygon, material: Material):
-#         self.polygon = polygon
-#         self.material = material
 
 
 # Point/vector methods
@@ -296,5 +290,42 @@ def triangulate_3d_surfaces(parent_surface_vertices: np.ndarray, child_surfaces_
 
 # Geometry to Radiance methods
 # Geometry to Radiance with Material methods
-# Proper geometry object polygon thing
+# Proper context object polygon thing
 
+# Generate point locations on sphere
+
+def sphere_cartesian(theta, phi):
+    x = np.cos(theta) * np.sin(phi)
+    y = np.sin(theta) * np.sin(phi)
+    z = np.cos(phi)
+
+    return np.vstack([x, y, z]).T
+
+
+def SkyPatchLocations(m=1):
+    # Create the number of patches per row
+    row_patches_base = np.array([1, 6, 12, 18, 24, 24, 30, 30])
+    row_patches_count = np.concatenate([np.array([1]), np.repeat(row_patches_base[1:] * m, m)])
+
+    # Generate azimuth angles for each patch
+    row_azimuths = [[0]] + [np.linspace(0, 2 * np.pi, i, endpoint=False).tolist() for i in row_patches_count[1:]]
+
+    # Generate altitude angles for each patch
+    row_altitudes = np.linspace(0, np.pi / 2, len(row_patches_count)).tolist()
+
+    # Construct the theta/phi coordinates array
+    theta = np.hstack(row_azimuths)
+    phi = np.hstack([[i] * row_patches_count[n] for n, i in enumerate(row_altitudes)])
+
+    return sphere_cartesian(theta, phi)
+
+
+# Construct sphere points using the spherical coordinates
+
+#
+# x, y, z = sphere_cartesian(theta, phi).T
+# fig = plt.figure()
+# ax = Axes3D(fig)
+#
+# ax.scatter(x, y, z)
+# print(x.shape)

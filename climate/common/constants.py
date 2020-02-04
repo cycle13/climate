@@ -155,12 +155,15 @@ time_of_year_mask = {
         "Afternoon": ((DATETIME_INDEX.hour >= 14) & (DATETIME_INDEX.hour <= 18)),
         "Evening": ((DATETIME_INDEX.hour >= 19) & (DATETIME_INDEX.hour <= 22)),
         "Night": ((DATETIME_INDEX.hour >= 23) | (DATETIME_INDEX.hour <= 4)),
+        "MorningShoulder": ((DATETIME_INDEX.hour >= 7) & (DATETIME_INDEX.hour <= 10)),
+        "AfternoonShoulder": ((DATETIME_INDEX.hour >= 16) & (DATETIME_INDEX.hour <= 19)),
 
         "Annual": ((DATETIME_INDEX.month >= 1) & (DATETIME_INDEX.month <= 12)),
         "Spring": ((DATETIME_INDEX.month >= 3) & (DATETIME_INDEX.month <= 5)),
         "Summer": ((DATETIME_INDEX.month >= 6) & (DATETIME_INDEX.month <= 8)),
         "Autumn": ((DATETIME_INDEX.month >= 9) & (DATETIME_INDEX.month <= 11)),
-        "Winter": ((DATETIME_INDEX.month <= 2) | (DATETIME_INDEX.month >= 12))
+        "Winter": ((DATETIME_INDEX.month <= 2) | (DATETIME_INDEX.month >= 12)),
+        "Shoulder": ((DATETIME_INDEX.month == 3) | (DATETIME_INDEX.month == 10)),
     }
 
 #######################
