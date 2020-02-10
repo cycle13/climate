@@ -1,70 +1,144 @@
+"""
+MASSIVE TODO!
+
+- Create classes and extensions to thsoe for specific functionality. The parts we need are Points, PLanes, Polygons.
+- Extension methods should generate grids across Polygons (with the option to subtract points from other in-situ polygons
+-
+
+"""
+
 import numpy as np
 from scipy.spatial import KDTree, Delaunay
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import Delaunay
+
+from sympy.geometry import Point, Polygon, Plane
+
 import uuid
 import pathlib
 from .material import Material
 
-class Point(object):
-    def __init__(self, x: float = 0, y: float = 0, z: float = 0):
-        self.guid = str(uuid.uuid4())
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def __repr__(self):
-        return "Point({}, {}, {})".format(self.x, self.y, self.z)
-
-    def __mul__(self, other: float):
-        return Point(self.x * other, self.y * other, self.z * other)
-
-    def unitize(self):
-        """ Gets the unitized form of the point/vector
-
-        Returns
-        -------
-        unitized_vector : Point
-            Unitized form of point/vector
-        """
-        magnitude = np.sqrt(np.power(self.x, 2) + np.power(self.y, 2) + np.power(self.z, 2))
-        return Point((self.x / magnitude, self.y / magnitude, self.z / magnitude))
-
-    def array(self):
-        return np.array([self.x, self.y, self.z])
-
-class PointCollection(object):
-    def __init__(self, points: np.ndarray):
-        self.points = points
-        self.points_x = [i.x for i in points]
-        self.points_y = [i.y for i in points]
-        self.points_z = [i.z for i in points]
-
-    def array(self):
-        return
-
-class Polygon(object):
-    def __init__(self, outer_vertices: np.ndarray = None, inner_vertices: np.ndarray = None, material: Material = Material(), inner_material: Material = None):
-        self.guid = str(uuid.uuid4())
-        self.outer_vertices = outer_vertices
-        self.inner_vertices = inner_vertices
-        self.tri = self.triangulate()
-        self.material = material
-
-    def __repr__(self):
-        return "Polygon:\n- Material: {0:}\n- Tri: {1:} triangulated sub-polygons".format(self.material.guid, len(self.tri))
-
-    def triangulate(self, inner: bool = False):
-        return triangulate_3d_surfaces(self.outer_vertices, self.inner_vertices)
-
-    def to_rad_string(self):
-        rad_string = []
-        rad_string.append(self.material.to_rad_string())
-        for bp in self.tri:
-            rad_string.append(rad_string_polygon(bp, id=self.guid, material=self.material.guid))
-        return "\n\n".join(rad_string)
 
 
+# class Point(object):
+#     def __init__(self, x: float = 0, y: float = 0, z: float = 0):
+#         self.guid = str(uuid.uuid4())
+#         self.x = x
+#         self.y = y
+#         self.z = z
+#
+#     def __repr__(self):
+#         return "Point({}, {}, {})".format(self.x, self.y, self.z)
+#
+#     def __mul__(self, other: float):
+#         return Point(self.x * other, self.y * other, self.z * other)
+#
+#     def unitize(self):
+#         """ Gets the unitized form of the point/vector
+#
+#         Returns
+#         -------
+#         unitized_vector : Point
+#             Unitized form of point/vector
+#         """
+#         magnitude = np.sqrt(np.power(self.x, 2) + np.power(self.y, 2) + np.power(self.z, 2))
+#         return Point(self.x / magnitude if magnitude > 0 else 0, self.y / magnitude if magnitude > 0 else 0,
+#                      self.z / magnitude if magnitude > 0 else 0)
+#
+#     def array(self):
+#         return np.array([self.x, self.y, self.z])
+
+
+# # class Points(object):
+# #     def __init__(self, points: np.ndarray):
+# #         self.points = np.array(points)
+# #
+# #         self.xs = np.array([i.x for i in points])
+# #         self.ys = np.array([i.y for i in points])
+# #         self.zs = np.array([i.z for i in points])
+# #
+# #     def xmin(self):
+# #         return np.min(self.xs)
+# #
+# #     def xmax(self):
+# #         return np.max(self.xs)
+# #
+# #     def ymin(self):
+# #         return np.min(self.ys)
+# #
+# #     def ymax(self):
+# #         return np.max(self.ys)
+# #
+# #     def zmin(self):
+# #         return np.min(self.zs)
+# #
+# #     def zmax(self):
+# #         return np.max(self.zs)
+# #
+# #     def xmedian(self):
+# #         return np.median(self.xs)
+# #
+# #     def ymedian(self):
+# #         return np.median(self.ys)
+# #
+# #     def zmedian(self):
+# #         return np.median(self.zs)
+# #
+# #     def planar(self):
+# #         # Create plane from first 3 points
+# #         a1 = self.xs[1] - self.xs[0]
+# #         b1 = self.ys[1] - self.ys[0]
+# #         c1 = self.zs[1] - self.zs[0]
+# #         a2 = self.xs[2] - self.xs[0]
+# #         b2 = self.ys[2] - self.ys[0]
+# #         c2 = self.zs[2] - self.zs[0]
+# #         a = b1 * c2 - b2 * c1
+# #         b = a2 * c1 - a1 * c2
+# #         c = a1 * b2 - b1 * a2
+# #         d = (- a * self.xs[0] - b * self.ys[0] - c * self.zs[0])
+# #
+# #         # For each point remaining - check for co-planarity
+# #         for pt in self.points:
+# #             if (a * pt.x + b * pt.y + c * pt.z + d == 0):
+# #                 return False
+# #
+# #         return True
+# #
+# #     def centroid(self):
+# #         return Point(self.xmedian(), self.ymedian(), self.zmedian())
+# #
+# #     def __repr__(self):
+# #         return "Points: {} points".format(len(self.points))
+# #
+# #     def array(self):
+# #         return np.vstack([self.xs, self.ys, self.zs]).T
+# #
+# #     def unitize(self):
+# #         return np.array([pt.unitize() for pt in self.points])
+#
+#
+# class Polygon(object):
+#     def __init__(self, outer_vertices: np.ndarray = None, inner_vertices: np.ndarray = None, material: Material = Material(), inner_material: Material = None):
+#         self.guid = str(uuid.uuid4())
+#         self.outer_vertices = outer_vertices
+#         self.inner_vertices = inner_vertices
+#         self.tri = self.triangulate()
+#         self.material = material
+#
+#     def __repr__(self):
+#         return "Polygon:\n- Material: {0:}\n- Tri: {1:} triangulated sub-polygons".format(self.material.guid, len(self.tri))
+#
+#     def triangulate(self, inner: bool = False):
+#         return triangulate_3d_surfaces(self.outer_vertices, self.inner_vertices)
+#
+#     def to_rad_string(self):
+#         rad_string = []
+#         rad_string.append(self.material.to_rad_string())
+#         for bp in self.tri:
+#             rad_string.append(rad_string_polygon(bp, id=self.guid, material=self.material.guid))
+#         return "\n\n".join(rad_string)
+#
+#
 # Point/vector methods
 def rad_string_polygon(boundary_points: np.ndarray, id: str=str(uuid.uuid4()), material: str="material_id"):
     return "{0:} polygon {1:}\n0\n0\n{2:} ".format(id, material, len(boundary_points) / 3) + " ".join([str(i) for i in boundary_points.flatten()])
@@ -91,8 +165,8 @@ def fibonacci_sphere(n_points: int=1000, cartesian: bool=True):
         return np.stack([x, y, z]).T
     else:
         return np.stack([theta, phi, [1] * n_points])
-
-
+#
+#
 def vector_horizon_angle(vector: np.ndarray):
     """
     Returns the angle between a given vector or vectors, and the horizon. +Ve for vectors above horizon
@@ -215,7 +289,7 @@ def resample_point_values(sample_points, existing_points, existing_values):
     """
     # TODO - Add checks to ensure existing points and values shapes match
     return LinearNDInterpolator(existing_points, existing_values)(sample_points).T
-
+#
 
 def view_factor(vector: np.ndarray, shading_geometry=None):
     """
@@ -324,160 +398,87 @@ def triangulate_3d_surfaces(parent_surface_vertices: np.ndarray, child_surfaces_
 
     return np.array(triangulated_surface_vertices)
 
-# Geometry to Radiance methods
-# Geometry to Radiance with Material methods
-# Proper context object polygon thing
-
-class Point(object):
-    def __init__(self, x: float = 0, y: float = 0, z: float = 0):
-        self.guid = str(uuid.uuid4())
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def __repr__(self):
-        return "Point({}, {}, {})".format(self.x, self.y, self.z)
-
-    def __mul__(self, other: float):
-        return Point(self.x * other, self.y * other, self.z * other)
-
-    def unitize(self):
-        """ Gets the unitized form of the point/vector
-
-        Returns
-        -------
-        unitized_vector : Point
-            Unitized form of point/vector
-        """
-        magnitude = np.sqrt(np.power(self.x, 2) + np.power(self.y, 2) + np.power(self.z, 2))
-        return Point(self.x / magnitude if magnitude > 0 else 0, self.y / magnitude if magnitude > 0 else 0,
-                     self.z / magnitude if magnitude > 0 else 0)
-
-    def array(self):
-        return np.array([self.x, self.y, self.z])
-
-
-class Points(object):
-    def __init__(self, points: np.ndarray):
-        self.points = np.array(points)
-
-        self.xs = np.array([i.x for i in points])
-        self.ys = np.array([i.y for i in points])
-        self.zs = np.array([i.z for i in points])
-
-    def xmin(self):
-        return np.min(self.xs)
-
-    def xmax(self):
-        return np.max(self.xs)
-
-    def ymin(self):
-        return np.min(self.ys)
-
-    def ymax(self):
-        return np.max(self.ys)
-
-    def zmin(self):
-        return np.min(self.zs)
-
-    def zmax(self):
-        return np.max(self.zs)
-
-    def xmedian(self):
-        return np.median(self.xs)
-
-    def ymedian(self):
-        return np.median(self.ys)
-
-    def zmedian(self):
-        return np.median(self.zs)
-
-    def centroid(self):
-        return Point(self.xmedian(), self.ymedian(), self.zmedian())
-
-    def __repr__(self):
-        return "Points: {} points".format(len(self.points))
-
-    def array(self):
-        return np.vstack([self.xs, self.ys, self.zs]).T
-
-    def unitize(self):
-        return np.array([pt.unitize() for pt in self.points])
-
-
-class SphericalCoordinate(object):
-    def __init__(self, theta: float = 0, phi: float = 0):
-        self.theta = theta
-        self.phi = phi
-
-    def __repr__(self):
-        return "SphericalCoordinate: ({}, {})".format(self.theta, self.phi)
-
-    def cartesian(self):
-        x = np.cos(self.theta) * np.sin(self.phi)
-        y = np.sin(self.theta) * np.sin(self.phi)
-        z = np.cos(self.phi)
-        return Point(x, y, z)
-
-
-class SphericalCoordinates(object):
-    def __init__(self, spherical_coordinates: np.ndarray):
-        self.spherical_coordinates = np.array(spherical_coordinates)
-
-        self.thetas = np.array([i.theta for i in spherical_coordinates])
-        self.phis = np.array([i.phi for i in spherical_coordinates])
-
-    def __repr__(self):
-        return "SphericalCoordinates: {} spherical coordinates".format(len(self.spherical_coordinates))
-
-
+# # Geometry to Radiance methods
+# # Geometry to Radiance with Material methods
+# # Proper context object polygon thing
+#
+# # TODO - Everything - Radiance sample analsyis points grid
+# # TODO - Read results from Radiance
+#
+#
+# class SphericalCoordinate(object):
+#     def __init__(self, theta: float = 0, phi: float = 0):
+#         self.theta = theta
+#         self.phi = phi
+#
+#     def __repr__(self):
+#         return "SphericalCoordinate: ({}, {})".format(self.theta, self.phi)
+#
 #     def cartesian(self):
-#         return np.array([sph.cartesian() for sph in self.spherical_coordinates])
-
-
-def SkyPatchLocations(m=1):
-    # Create the number of patches per row
-    row_patches_base = np.array([1, 6, 12, 18, 24, 24, 30, 30])
-    row_patches_count = np.concatenate([np.array([1]), np.repeat(row_patches_base[1:] * m, m)])
-
-    # Generate azimuth angles for each patch
-    row_azimuths = [[0]] + [np.linspace(0, 2 * np.pi, i, endpoint=False).tolist() for i in row_patches_count[1:]]
-
-    # Generate altitude angles for each patch
-    row_altitudes = np.linspace(0, np.pi / 2, len(row_patches_count)).tolist()
-
-    # Construct the theta/phi coordinates array
-    theta = np.hstack(row_azimuths)
-    phi = np.hstack([[i] * row_patches_count[n] for n, i in enumerate(row_altitudes)])
-
-    return SphericalCoordinates(theta, phi)
-
-# Generate point locations on sphere
-
-def sphere_cartesian(theta, phi):
-    x = np.cos(theta) * np.sin(phi)
-    y = np.sin(theta) * np.sin(phi)
-    z = np.cos(phi)
-
-    return np.vstack([x, y, z]).T
-
-
-def SkyPatchLocations(m=1):
-    # Create the number of patches per row
-    row_patches_base = np.array([1, 6, 12, 18, 24, 24, 30, 30])
-    row_patches_count = np.concatenate([np.array([1]), np.repeat(row_patches_base[1:] * m, m)])
-
-    # Generate azimuth angles for each patch
-    row_azimuths = [[0]] + [np.linspace(0, 2 * np.pi, i, endpoint=False).tolist() for i in row_patches_count[1:]]
-
-    # Generate altitude angles for each patch
-    row_altitudes = np.linspace(0, np.pi / 2, len(row_patches_count)).tolist()
-
-    # Construct the theta/phi coordinates array
-    theta = np.hstack(row_azimuths)
-    phi = np.hstack([[i] * row_patches_count[n] for n, i in enumerate(row_altitudes)])
-
-    return sphere_cartesian(theta, phi)
+#         x = np.cos(self.theta) * np.sin(self.phi)
+#         y = np.sin(self.theta) * np.sin(self.phi)
+#         z = np.cos(self.phi)
+#         return Point(x, y, z)
+#
+#
+# class SphericalCoordinates(object):
+#     def __init__(self, spherical_coordinates: np.ndarray):
+#         self.spherical_coordinates = np.array(spherical_coordinates)
+#
+#         self.thetas = np.array([i.theta for i in spherical_coordinates])
+#         self.phis = np.array([i.phi for i in spherical_coordinates])
+#
+#     def __repr__(self):
+#         return "SphericalCoordinates: {} spherical coordinates".format(len(self.spherical_coordinates))
+#
+#
+# #     def cartesian(self):
+# #         return np.array([sph.cartesian() for sph in self.spherical_coordinates])
+#
+#
+# def SkyPatchLocations(m=1):
+#     # Create the number of patches per row
+#     row_patches_base = np.array([1, 6, 12, 18, 24, 24, 30, 30])
+#     row_patches_count = np.concatenate([np.array([1]), np.repeat(row_patches_base[1:] * m, m)])
+#
+#     # Generate azimuth angles for each patch
+#     row_azimuths = [[0]] + [np.linspace(0, 2 * np.pi, i, endpoint=False).tolist() for i in row_patches_count[1:]]
+#
+#     # Generate altitude angles for each patch
+#     row_altitudes = np.linspace(0, np.pi / 2, len(row_patches_count)).tolist()
+#
+#     # Construct the theta/phi coordinates array
+#     theta = np.hstack(row_azimuths)
+#     phi = np.hstack([[i] * row_patches_count[n] for n, i in enumerate(row_altitudes)])
+#
+#     return SphericalCoordinates(theta, phi)
+#
+# # Generate point locations on sphere
+#
+# def sphere_cartesian(theta, phi):
+#     x = np.cos(theta) * np.sin(phi)
+#     y = np.sin(theta) * np.sin(phi)
+#     z = np.cos(phi)
+#
+#     return np.vstack([x, y, z]).T
+#
+#
+# def SkyPatchLocations(m=1):
+#     # Create the number of patches per row
+#     row_patches_base = np.array([1, 6, 12, 18, 24, 24, 30, 30])
+#     row_patches_count = np.concatenate([np.array([1]), np.repeat(row_patches_base[1:] * m, m)])
+#
+#     # Generate azimuth angles for each patch
+#     row_azimuths = [[0]] + [np.linspace(0, 2 * np.pi, i, endpoint=False).tolist() for i in row_patches_count[1:]]
+#
+#     # Generate altitude angles for each patch
+#     row_altitudes = np.linspace(0, np.pi / 2, len(row_patches_count)).tolist()
+#
+#     # Construct the theta/phi coordinates array
+#     theta = np.hstack(row_azimuths)
+#     phi = np.hstack([[i] * row_patches_count[n] for n, i in enumerate(row_altitudes)])
+#
+#     return sphere_cartesian(theta, phi)
 
 
 # Construct sphere points using the spherical coordinates
