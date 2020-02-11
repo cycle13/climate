@@ -1,0 +1,1 @@
+pip install --upgrade lbt-ladybug lbt-honeybee ladybug-comfort ladybug-geometry lbt-dragonfly uwg honeybee-core honeybee-schema honeybee-radiance honeybee-energy honeybee-energy-standards

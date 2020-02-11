@@ -2,6 +2,18 @@ matplotlib
 numpy
 pandas
 psychrolib
-pvlib
+# pvlib
 scipy
 windrose
+
+lbt-ladybug
+lbt-honeybee
+ladybug-comfort
+ladybug-geometry
+lbt-dragonfly
+uwg
+honeybee-core
+honeybee-schema
+honeybee-radiance
+honeybee-energy
+honeybee-energy-standards
